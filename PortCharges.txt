@@ -1,0 +1,173 @@
+# PortCharges.txt - Daily Docking Charges for Vessels
+# Format: PortName DailyCharge($)
+
+# Middle East (High charges due to strategic location)
+Karachi 4500
+Dubai 5200
+AbuDhabi 5100
+Doha 4800
+Jeddah 4200
+
+# South Asia (Medium charges)
+Mumbai 3800
+Colombo 3500
+Chittagong 3200
+
+# Southeast Asia Hub (Singapore highest in region)
+Singapore 4800
+Jakarta 3600
+Manila 3400
+
+# East Asia (Highest charges globally)
+HongKong 5500
+Shanghai 5300
+Busan 4200
+Osaka 4400
+Tokyo 5600
+
+# Europe (Varies by country)
+# Southern Europe
+Alexandria 3200
+Istanbul 4100
+Athens 3800
+Genoa 4300
+Marseille 4200
+Lisbon 3900
+
+# Western Europe (Highest in Europe)
+London 4800
+Dublin 3700
+Rotterdam 4600
+Antwerp 4500
+Hamburg 4400
+
+# Scandinavia (Medium-high)
+Copenhagen 4200
+Oslo 4100
+Stockholm 4100
+Helsinki 4000
+
+# North America
+NewYork 5200
+Montreal 3800
+LosAngeles 4900
+Vancouver 4100
+
+# Africa (Lower charges)
+PortLouis 2800
+Durban 3100
+CapeTown 3200
+
+# Oceania (High due to remote location)
+Sydney 4700
+Melbourne 4600
+
+# Additional ports for comprehensive coverage
+# Middle East additional
+JebelAli 5000
+Sharjah 3800
+Muscat 3500
+Kuwait 3900
+Basra 3200
+
+# South Asia additional
+Chennai 3400
+Kolkata 3200
+Cochin 3300
+Visakhapatnam 3100
+
+# Southeast Asia additional
+Bangkok 3700
+HoChiMinh 3500
+Haiphong 3200
+PortKlang 3900
+TanjungPelepas 4100
+
+# East Asia additional
+Qingdao 4600
+Ningbo 4700
+Tianjin 4500
+Guangzhou 4800
+Shenzhen 4900
+Kaohsiung 4200
+Incheon 4300
+
+# Europe additional
+LeHavre 4200
+Bremerhaven 4300
+Felixstowe 4400
+Algeciras 3900
+Valencia 3800
+Piraeus 4000
+Gdansk 3500
+
+# Mediterranean
+Barcelona 4100
+Naples 3800
+Trieste 3700
+Izmir 3500
+Haifa 3900
+
+# Black Sea
+Constanta 3200
+Odessa 3100
+Novorossiysk 3000
+
+# Baltic Sea
+Riga 3400
+Tallinn 3300
+Klaipeda 3200
+Gothenburg 3900
+
+# North America additional
+LongBeach 4800
+Seattle 4000
+Oakland 4200
+Houston 4300
+Miami 4100
+Savannah 3900
+Halifax 3500
+
+# South America
+Santos 3700
+BuenosAires 3500
+Callao 3300
+Guayaquil 3200
+Cartagena 3400
+Manaus 3000
+
+# Africa additional
+Lagos 3400
+Tema 3200
+Mombasa 3100
+DarEsSalaam 3000
+Djibouti 3800
+Tangier 3600
+Dakar 3300
+
+# Oceania additional
+Brisbane 4400
+Perth 4300
+Auckland 4200
+Wellington 4100
+PortMoresby 2900
+Suva 2800
+
+# Special Economic Zones (Lower charges)
+Jazan 2500
+Duqm 2600
+Gwadar 2700
+Hambantota 2800
+Kribi 2900
+
+# Strategic chokepoints (Higher charges)
+Suez 5000
+Panama 4800
+Gibraltar 4200
+Malacca 4600
+BabElMandeb 3900
+
+# Arctic route (Developing, lower charges)
+Murmansk 3200
+Archangel 3000
+Kirkenes 3100

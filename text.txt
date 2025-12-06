@@ -1,0 +1,2627 @@
+#ifndef MARITIME_SYSTEM_H
+#define MARITIME_SYSTEM_H
+
+#include <SFML/Graphics.hpp>
+#include "data_structures.h"
+#include <cmath>
+#include <ctime>
+#include <sstream>
+#include <climits>
+
+using namespace sf;
+using namespace std;
+
+struct DateTime
+{
+    int day, month, year;
+    int hour, minute;
+
+    DateTime() : day(1), month(1), year(2024), hour(0), minute(0) {}
+
+    DateTime(int d, int m, int y, int h, int min)
+        : day(d), month(m), year(y), hour(h), minute(min) {}
+
+    bool operator<(const DateTime &other) const
+    {
+        if (year != other.year)
+            return year < other.year;
+        if (month != other.month)
+            return month < other.month;
+        if (day != other.day)
+            return day < other.day;
+        if (hour != other.hour)
+            return hour < other.hour;
+        return minute < other.minute;
+    }
+
+    bool operator<=(const DateTime &other) const
+    {
+        return !(other < *this);
+    }
+
+    int toMinutes() const
+    {
+        return ((day - 1) * 1440) + (hour * 60) + minute;
+    }
+
+    int minutesDifference(const DateTime &other) const
+    {
+        return other.toMinutes() - toMinutes();
+    }
+
+    void addMinutes(int mins)
+    {
+        minute += mins;
+        hour += minute / 60;
+        minute %= 60;
+        day += hour / 24;
+        hour %= 24;
+    }
+
+    string toString() const
+    {
+        char buffer[64];
+        sprintf(buffer, "%02d/%02d/%04d %02d:%02d", day, month, year, hour, minute);
+        return string(buffer);
+    }
+};
+
+sstruct Voyage {
+    int destinationPort;
+    MyString company;
+    int cost;
+    DateTime departure;
+    DateTime arrival;
+    Voyage* next;
+    
+    Voyage() : destinationPort(-1), cost(0), next(nullptr) {}
+    
+    int duration() const {
+        DateTime temp = departure;
+        temp.addMinutes(arrival.minutesDifference(departure));
+        return arrival.minutesDifference(departure);
+    }
+    
+    int getDurationMinutes() const {
+        return duration();
+    }
+    
+    // Check if this voyage can connect from a previous arrival
+    bool canConnectFrom(const DateTime& previousArrival, int maxLayoverDays) const {
+        // Ship must arrive before departure of next voyage
+        if (previousArrival < departure) {
+            // Calculate layover time
+            int layoverMinutes = departure.minutesDifference(previousArrival);
+            int layoverDays = (layoverMinutes + 1439) / 1440; // Ceil division
+            
+            // Check if layover is within limits
+            return layoverDays <= maxLayoverDays;
+        }
+        return false;
+    }
+    
+    // Get layover cost at a port
+    int getLayoverCost(const DateTime& previousArrival, int portDailyCharge) const {
+        int layoverMinutes = departure.minutesDifference(previousArrival);
+        int layoverDays = (layoverMinutes + 1439) / 1440;
+        return layoverDays * portDailyCharge;
+    }
+};
+
+struct Port
+{
+    MyString name;
+    Vector2f position;
+    int dailyCharge;
+    Voyage *voyages; // Linked list of outgoing voyages
+    bool isPreferred;
+    int dockingQueueSize;
+    float queuePulse;
+
+    Port() : dailyCharge(0), voyages(nullptr), isPreferred(false),
+             dockingQueueSize(0), queuePulse(0.0f) {}
+
+    Port(MyString n, Vector2f p) : name(n), position(p), dailyCharge(0),
+                                   voyages(nullptr), isPreferred(false), dockingQueueSize(0), queuePulse(0.0f) {}
+
+    ~Port()
+    {
+        while (voyages)
+        {
+            Voyage *temp = voyages;
+            voyages = voyages->next;
+            delete temp;
+        }
+    }
+
+    void addVoyage(int dest, const MyString &comp, int cst,
+                   const DateTime &dep, const DateTime &arr)
+    {
+        Voyage *newVoyage = new Voyage();
+        newVoyage->destinationPort = dest;
+        newVoyage->company = comp;
+        newVoyage->cost = cst;
+        newVoyage->departure = dep;
+        newVoyage->arrival = arr;
+        newVoyage->next = voyages;
+        voyages = newVoyage;
+    }
+
+    int getVoyageCount() const
+    {
+        int count = 0;
+        Voyage *current = voyages;
+        while (current)
+        {
+            count++;
+            current = current->next;
+        }
+        return count;
+    }
+};
+
+struct PathNode
+{
+    int port;
+    long long cost;
+    DateTime arrivalTime;
+    int previous;
+
+    PathNode() : port(-1), cost(0), previous(-1) {}
+    PathNode(int p, long long c, const DateTime &arr, int prev)
+        : port(p), cost(c), arrivalTime(arr), previous(prev) {}
+};
+
+struct Ship
+{
+    int id;
+    int currentPort;
+    int destinationPort;
+    DateTime arrivalTime;
+    DateTime departureTime;
+    MyString company;
+    bool isDocked;
+
+    Ship() : id(0), currentPort(-1), destinationPort(-1), isDocked(false) {}
+};
+
+class MaritimeSystem
+{
+private:
+    static const int MAX_PORTS = 100;
+    static const int MAX_SHIPS = 500;
+
+    Port ports[MAX_PORTS];
+    int portCount;
+
+    Ship ships[MAX_SHIPS];
+    int shipCount;
+
+    // Pathfinding
+    LinkedList<int> currentPath;
+    LinkedList<int> exploredEdges;
+    int startPort, endPort;
+    bool showCostPath, showTimePath;
+    bool useAStar;
+
+    // UI State
+    int hoveredPort;
+    int selectedRouteFrom, selectedRouteTo;
+    bool routeFocusMode;
+
+    // User Preferences
+    MyString preferredCompany;
+    int maxCostPerLeg;
+    int maxLayoverDays;
+
+    // Input
+    bool inputActive;
+    MyString inputText;
+    bool isPreferenceMode;
+
+    // Graphics
+    Texture mapTexture;
+    Sprite mapSprite;
+    Font font;
+    Clock animationClock;
+
+    // Notification
+    MyString notification;
+    float notificationTimer;
+    Clock notificationClock;
+
+private:
+    // === BOOKING ANIMATION SYSTEM ===
+    struct BookingAnimation
+    {
+        int currentLeg;
+        float progress;
+        Vector2f position;
+        bool active;
+        Clock animationClock;
+        int shipId;
+        float totalCost;
+        int totalTime;
+
+        BookingAnimation() : currentLeg(-1), progress(0.0f), active(false),
+                             shipId(-1), totalCost(0), totalTime(0) {}
+
+        void start(int pathStartPort)
+        {
+            currentLeg = 0;
+            progress = 0.0f;
+            active = true;
+            shipId = 1000 + (rand() % 9000); // 1000-9999
+            totalCost = 0;
+            totalTime = 0;
+            position = Vector2f(0, 0);
+            animationClock.restart();
+        }
+
+        void stop()
+        {
+            active = false;
+            currentLeg = -1;
+            progress = 0.0f;
+        }
+    };
+
+    BookingAnimation bookingAnim;
+    bool showBookingAnimation;
+
+    // Animation methods
+    void startBookingAnimation();
+    void updateBookingAnimation(float dt);
+    void drawBookingAnimation(RenderWindow &window);
+    void drawBookingInfo(RenderWindow &window);
+private:
+    int findCompanyIndex(const MyString& company) {
+        // Simple hash for company identification
+        const char* str = company.c_str();
+        int hash = 0;
+        for (int i = 0; str[i] != '\0'; i++) {
+            hash = hash * 31 + str[i];
+        }
+        return hash;
+    }
+    // Port positions based on world map (1920x1080)
+    void initializePortPositions()
+    {
+        // Middle East & South Asia
+        ports[portCount++] = {MyString("Karachi"), Vector2f(1100, 470)};
+        ports[portCount++] = {MyString("Dubai"), Vector2f(1180, 440)};
+        ports[portCount++] = {MyString("AbuDhabi"), Vector2f(1190, 450)};
+        ports[portCount++] = {MyString("Doha"), Vector2f(1160, 430)};
+        ports[portCount++] = {MyString("Jeddah"), Vector2f(1050, 420)};
+        ports[portCount++] = {MyString("Alexandria"), Vector2f(940, 380)};
+        ports[portCount++] = {MyString("Istanbul"), Vector2f(980, 330)};
+        ports[portCount++] = {MyString("Athens"), Vector2f(920, 340)};
+
+        // Indian Subcontinent
+        ports[portCount++] = {MyString("Mumbai"), Vector2f(1120, 520)};
+        ports[portCount++] = {MyString("Colombo"), Vector2f(1170, 620)};
+        ports[portCount++] = {MyString("Chittagong"), Vector2f(1240, 480)};
+
+        // Southeast Asia
+        ports[portCount++] = {MyString("Singapore"), Vector2f(1320, 600)};
+        ports[portCount++] = {MyString("Jakarta"), Vector2f(1350, 680)};
+        ports[portCount++] = {MyString("Manila"), Vector2f(1450, 530)};
+
+        // East Asia
+        ports[portCount++] = {MyString("HongKong"), Vector2f(1380, 480)};
+        ports[portCount++] = {MyString("Shanghai"), Vector2f(1440, 440)};
+        ports[portCount++] = {MyString("Busan"), Vector2f(1520, 420)};
+        ports[portCount++] = {MyString("Osaka"), Vector2f(1560, 430)};
+        ports[portCount++] = {MyString("Tokyo"), Vector2f(1590, 410)};
+
+        // Africa
+        ports[portCount++] = {MyString("PortLouis"), Vector2f(1200, 780)};
+        ports[portCount++] = {MyString("Durban"), Vector2f(1050, 850)};
+        ports[portCount++] = {MyString("CapeTown"), Vector2f(950, 900)};
+
+        // Europe
+        ports[portCount++] = {MyString("Lisbon"), Vector2f(680, 400)};
+        ports[portCount++] = {MyString("London"), Vector2f(800, 300)};
+        ports[portCount++] = {MyString("Dublin"), Vector2f(730, 280)};
+        ports[portCount++] = {MyString("Rotterdam"), Vector2f(850, 320)};
+        ports[portCount++] = {MyString("Antwerp"), Vector2f(870, 330)};
+        ports[portCount++] = {MyString("Hamburg"), Vector2f(890, 310)};
+        ports[portCount++] = {MyString("Copenhagen"), Vector2f(920, 290)};
+        ports[portCount++] = {MyString("Oslo"), Vector2f(880, 250)};
+        ports[portCount++] = {MyString("Stockholm"), Vector2f(950, 260)};
+        ports[portCount++] = {MyString("Helsinki"), Vector2f(980, 240)};
+        ports[portCount++] = {MyString("Genoa"), Vector2f(880, 380)};
+        ports[portCount++] = {MyString("Marseille"), Vector2f(830, 390)};
+
+        // North America
+        ports[portCount++] = {MyString("NewYork"), Vector2f(400, 360)};
+        ports[portCount++] = {MyString("Montreal"), Vector2f(450, 340)};
+        ports[portCount++] = {MyString("LosAngeles"), Vector2f(200, 380)};
+        ports[portCount++] = {MyString("Vancouver"), Vector2f(180, 320)};
+
+        // Oceania
+        ports[portCount++] = {MyString("Sydney"), Vector2f(1600, 780)};
+        ports[portCount++] = {MyString("Melbourne"), Vector2f(1550, 850)};
+    }
+
+    int findPort(const char *name)
+    {
+        for (int i = 0; i < portCount; i++)
+        {
+            if (ports[i].name == name)
+                return i;
+        }
+        return -1;
+    }
+
+    void loadPortCharges()
+    {
+        FILE *file = fopen("PortCharges.txt", "r");
+        if (!file)
+            return;
+
+        char name[64];
+        int charge;
+
+        while (fscanf(file, "%s %d", name, &charge) == 2)
+        {
+            int idx = findPort(name);
+            if (idx != -1)
+            {
+                ports[idx].dailyCharge = charge;
+            }
+        }
+
+        fclose(file);
+    }
+
+    void loadRoutes()
+    {
+        FILE *file = fopen("Routes.txt", "r");
+        if (!file)
+        {
+            notification = MyString("ERROR: Cannot open Routes.txt");
+            notificationTimer = 5.0f;
+            notificationClock.restart();
+            return;
+        }
+
+        char line[256];
+        int routeCount = 0;
+
+        while (fgets(line, sizeof(line), file))
+        {
+            if (line[0] == '\n' || line[0] == '\0')
+                continue;
+
+            char from[64], to[64], date[16], dep[16], arr[16], company[64];
+            int cost;
+            int d, m, y, h1, m1, h2, m2;
+
+            if (sscanf(line, "%s %s %d/%d/%d %d:%d %d:%d %d %s",
+                       from, to, &d, &m, &y, &h1, &m1, &h2, &m2, &cost, company) == 11)
+            {
+
+                int src = findPort(from);
+                int dst = findPort(to);
+
+                if (src != -1 && dst != -1)
+                {
+                    DateTime departure(d, m, y, h1, m1);
+                    DateTime arrival(d, m, y, h2, m2);
+
+                    // Handle next day arrivals
+                    if (h2 < h1 || (h2 == h1 && m2 < m1))
+                    {
+                        arrival.day++;
+                    }
+
+                    ports[src].addVoyage(dst, MyString(company), cost, departure, arrival);
+                    routeCount++;
+                }
+            }
+        }
+
+        fclose(file);
+
+        char buffer[128];
+        sprintf(buffer, "Loaded %d routes from %d ports", routeCount, portCount);
+        notification = MyString(buffer);
+        notificationTimer = 3.0f;
+        notificationClock.restart();
+    }
+void reconstructIndirectPath(int prev[], int companyIndex[], DateTime arrivalTimes[], bool byCost) {
+    currentPath.clear();
+    if (prev[endPort] == -1) {
+        notification = MyString("No path found! Try different ports or relax filters.");
+        notificationTimer = 3.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    // Reconstruct path backwards
+    Stack<int> pathStack;
+    for (int at = endPort; at != -1; at = prev[at]) {
+        pathStack.push(at);
+    }
+    
+    // Check if start port is included
+    if (pathStack.empty() || pathStack.top() != startPort) {
+        notification = MyString("Path reconstruction failed!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    // Transfer to currentPath
+    while (!pathStack.empty()) {
+        currentPath.push_back(pathStack.top());
+        pathStack.pop();
+    }
+    
+    // Calculate detailed path information
+    int totalCost = 0;
+    int totalTime = 0;
+    int voyageCount = 0;
+    int layoverCount = 0;
+    
+    vector<string> pathDetails;
+    
+    for (int i = 0; i < currentPath.size() - 1; i++) {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i+1);
+        
+        // Find the actual voyage taken
+        Voyage* takenVoyage = nullptr;
+        Voyage* v = ports[from].voyages;
+        
+        while (v) {
+            if (v->destinationPort == to) {
+                // Check if this voyage matches the arrival time (indicates it was taken)
+                if (v->arrival.toString() == arrivalTimes[to].toString()) {
+                    takenVoyage = v;
+                    break;
+                }
+            }
+            v = v->next;
+        }
+        
+        if (takenVoyage) {
+            voyageCount++;
+            
+            // Add to totals
+            totalCost += takenVoyage->cost;
+            totalTime += takenVoyage->getDurationMinutes();
+            
+            // Calculate layover (except for first leg)
+            if (i > 0) {
+                int prevPort = currentPath.get(i-1);
+                Voyage* prevVoyage = nullptr;
+                Voyage* pv = ports[prevPort].voyages;
+                
+                while (pv) {
+                    if (pv->destinationPort == from) {
+                        if (pv->arrival.toString() == arrivalTimes[from].toString()) {
+                            prevVoyage = pv;
+                            break;
+                        }
+                    }
+                    pv = pv->next;
+                }
+                
+                if (prevVoyage) {
+                    int layoverMinutes = takenVoyage->departure.minutesDifference(prevVoyage->arrival);
+                    if (layoverMinutes > 0) {
+                        layoverCount++;
+                        totalTime += layoverMinutes;
+                        if (byCost) {
+                            int layoverDays = (layoverMinutes + 1439) / 1440;
+                            totalCost += layoverDays * ports[from].dailyCharge;
+                        }
+                        
+                        // Add layover info
+                        char layoverBuf[128];
+                        sprintf(layoverBuf, "  ⏱️ Layover at %s: %dh %dm",
+                                ports[from].name.c_str(),
+                                layoverMinutes / 60,
+                                layoverMinutes % 60);
+                        pathDetails.push_back(layoverBuf);
+                    }
+                }
+            }
+            
+            // Add voyage info
+            char voyageBuf[256];
+            sprintf(voyageBuf, "🚢 %s → %s (%s)\n     Cost: $%d, Time: %dh %dm, Dep: %s",
+                    ports[from].name.c_str(),
+                    ports[to].name.c_str(),
+                    takenVoyage->company.c_str(),
+                    takenVoyage->cost,
+                    takenVoyage->getDurationMinutes() / 60,
+                    takenVoyage->getDurationMinutes() % 60,
+                    takenVoyage->departure.toString().c_str());
+            pathDetails.push_back(voyageBuf);
+        }
+    }
+    
+    // Display comprehensive path info
+    char summaryBuf[512];
+    sprintf(summaryBuf, "✅ %s PATH FOUND!\n"
+                       "Route: %s → %s\n"
+                       "Segments: %d voyages, %d layovers\n"
+                       "Total Cost: $%d\n"
+                       "Total Time: %dh %dm",
+            byCost ? "CHEAPEST" : "FASTEST",
+            ports[startPort].name.c_str(),
+            ports[endPort].name.c_str(),
+            voyageCount,
+            layoverCount,
+            totalCost,
+            totalTime / 60,
+            totalTime % 60);
+    
+    notification = MyString(summaryBuf);
+    notificationTimer = 5.0f;
+    notificationClock.restart();
+    
+    // Also print to console for debugging
+    cout << "\n=== INDIRECT PATH DETAILS ===" << endl;
+    cout << summaryBuf << endl;
+    cout << "Detailed itinerary:" << endl;
+    for (const string& detail : pathDetails) {
+        cout << detail << endl;
+    }
+    cout << "============================\n" << endl;
+}
+   void dijkstra(bool byCost) {
+    if (startPort == -1 || endPort == -1) {
+        notification = MyString("Please select both start and end ports!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    long long dist[MAX_PORTS];
+    DateTime arrivalTime[MAX_PORTS];
+    int prev[MAX_PORTS];
+    int prevVoyageCompany[MAX_PORTS]; // Store company for filtering
+    bool visited[MAX_PORTS] = {false};
+    
+    for (int i = 0; i < portCount; i++) {
+        dist[i] = LLONG_MAX;
+        prev[i] = -1;
+        prevVoyageCompany[i] = -1;
+        arrivalTime[i] = DateTime();
+    }
+    
+    dist[startPort] = 0;
+    arrivalTime[startPort] = DateTime(1, 12, 2024, 0, 0); // Starting time
+    
+    // Custom priority queue element that stores port, cost, and arrival time
+    struct QueueElement {
+        int port;
+        long long cost;
+        DateTime arrival;
+        
+        bool operator<(const QueueElement& other) const {
+            return cost > other.cost; // Min-heap
+        }
+    };
+    
+    PriorityQueue<QueueElement> pq;
+    pq.push(QueueElement{startPort, 0, arrivalTime[startPort]}, 0);
+    
+    exploredEdges.clear();
+    currentPath.clear();
+    
+    char buffer[128];
+    sprintf(buffer, "%s finding %s path...", 
+            useAStar ? "A*" : "Dijkstra",
+            byCost ? "cheapest" : "fastest");
+    notification = MyString(buffer);
+    notificationTimer = 1.5f;
+    notificationClock.restart();
+    
+    int nodesExplored = 0;
+    int connectionsFound = 0;
+    
+    while (!pq.empty()) {
+        QueueElement current = pq.pop();
+        int u = current.port;
+        
+        if (visited[u]) continue;
+        visited[u] = true;
+        nodesExplored++;
+        
+        // If we reached the destination
+        if (u == endPort) {
+            sprintf(buffer, "Path found! Explored %d nodes, %d connections",
+                    nodesExplored, connectionsFound);
+            notification = MyString(buffer);
+            notificationTimer = 2.5f;
+            notificationClock.restart();
+            break;
+        }
+        
+        // Explore all outgoing voyages from this port
+        Voyage* v = ports[u].voyages;
+        while (v) {
+            int dest = v->destinationPort;
+            
+            // Apply company filter if set
+            if (!preferredCompany.empty() && !(v->company == preferredCompany)) {
+                v = v->next;
+                continue;
+            }
+            
+            // Apply cost filter
+            if (v->cost > maxCostPerLeg) {
+                v = v->next;
+                continue;
+            }
+            
+            // Check if we can take this voyage from current arrival
+            if (!v->canConnectFrom(arrivalTime[u], maxLayoverDays)) {
+                v = v->next;
+                continue;
+            }
+            
+            // Calculate total cost/time for this leg
+            long long legCost = 0;
+            long long legTime = 0;
+            
+            if (byCost) {
+                // For cheapest path: voyage cost + layover cost
+                int layoverCost = v->getLayoverCost(arrivalTime[u], ports[u].dailyCharge);
+                legCost = v->cost + layoverCost;
+                legTime = v->getDurationMinutes();
+            } else {
+                // For fastest path: voyage time + layover time
+                int layoverMinutes = v->departure.minutesDifference(arrivalTime[u]);
+                legCost = v->getDurationMinutes() + layoverMinutes;
+                legTime = legCost;
+            }
+            
+            long long newDist = dist[u] + legCost;
+            
+            // Check if this is a better path
+            if (newDist < dist[dest]) {
+                dist[dest] = newDist;
+                arrivalTime[dest] = v->arrival;
+                prev[dest] = u;
+                
+                // Store voyage info for reconstruction
+                prevVoyageCompany[dest] = findCompanyIndex(v->company);
+                
+                // Add to priority queue
+                pq.push(QueueElement{dest, newDist, v->arrival}, newDist);
+                
+                // Add to explored edges for visualization
+                exploredEdges.push_back(u);
+                exploredEdges.push_back(dest);
+                
+                connectionsFound++;
+            }
+            
+            v = v->next;
+        }
+    }
+    
+    // Reconstruct the indirect path
+    reconstructIndirectPath(prev, prevVoyageCompany, arrivalTime, byCost);
+    
+    // Set display flags
+    if (byCost) {
+        showCostPath = true;
+        showTimePath = false;
+    } else {
+        showTimePath = true;
+        showCostPath = false;
+    }
+}
+   void astar(bool byCost) {
+    if (startPort == -1 || endPort == -1) {
+        notification = MyString("Please select both start and end ports!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    long long gScore[MAX_PORTS];
+    long long fScore[MAX_PORTS];
+    DateTime arrival[MAX_PORTS];
+    int prev[MAX_PORTS];
+    bool visited[MAX_PORTS] = {false};
+    
+    for (int i = 0; i < portCount; i++) {
+        gScore[i] = fScore[i] = LLONG_MAX;
+        prev[i] = -1;
+    }
+    
+    gScore[startPort] = 0;
+    fScore[startPort] = heuristic(startPort, endPort, byCost);
+    arrival[startPort] = DateTime(1, 12, 2024, 0, 0);
+    
+    PriorityQueue<int> pq;
+    pq.push(startPort, fScore[startPort]);
+    
+    exploredEdges.clear();
+    currentPath.clear(); // Clear previous path
+    
+    char algorithmMsg[128];
+    sprintf(algorithmMsg, "A* algorithm running for %s path...", 
+            byCost ? "cheapest" : "fastest");
+    notification = MyString(algorithmMsg);
+    notificationTimer = 1.0f;
+    notificationClock.restart();
+    
+    int nodesExplored = 0;
+    
+    while (!pq.empty()) {
+        int u = pq.pop();
+        nodesExplored++;
+        
+        if (u == endPort) {
+            char foundMsg[128];
+            sprintf(foundMsg, "A* path found! Explored %d nodes", nodesExplored);
+            notification = MyString(foundMsg);
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+            break;
+        }
+        
+        if (visited[u]) continue;
+        visited[u] = true;
+        
+        Voyage* v = ports[u].voyages;
+        while (v) {
+            // Apply filters
+            if (!preferredCompany.empty() && !(v->company == preferredCompany)) {
+                v = v->next;
+                continue;
+            }
+            
+            if (v->cost > maxCostPerLeg) {
+                v = v->next;
+                continue;
+            }
+            
+            int layoverMinutes = arrival[u].minutesDifference(v->departure);
+            if (layoverMinutes < 0) {
+                v = v->next;
+                continue;
+            }
+            
+            int layoverDays = (layoverMinutes + 1439) / 1440;
+            if (layoverDays > maxLayoverDays) {
+                v = v->next;
+                continue;
+            }
+            
+            long long layoverCost = layoverDays * ports[u].dailyCharge;
+            long long voyageCost = byCost ? (v->cost + layoverCost) : v->getDurationMinutes();
+            
+            long long tentativeGScore = gScore[u] + voyageCost;
+            
+            if (tentativeGScore < gScore[v->destinationPort]) {
+                prev[v->destinationPort] = u;
+                gScore[v->destinationPort] = tentativeGScore;
+                fScore[v->destinationPort] = tentativeGScore + heuristic(v->destinationPort, endPort, byCost);
+                arrival[v->destinationPort] = v->arrival;
+                
+                pq.push(v->destinationPort, fScore[v->destinationPort]);
+                
+                // Add to explored edges for visualization
+                exploredEdges.push_back(u);
+                exploredEdges.push_back(v->destinationPort);
+            }
+            
+            v = v->next;
+        }
+    }
+    
+    // Reconstruct path
+    reconstructPath(prev);
+    
+    // Set display flags
+    if (byCost) {
+        showCostPath = true;
+        showTimePath = false;
+    } else {
+        showTimePath = true;
+        showCostPath = false;
+    }
+}
+
+    long long heuristic(int from, int to, bool byCost)
+    {
+        float dist = sqrt(pow(ports[to].position.x - ports[from].position.x, 2) +
+                          pow(ports[to].position.y - ports[from].position.y, 2));
+
+        if (byCost)
+        {
+            return dist * 5; // Rough cost estimate per pixel
+        }
+        else
+        {
+            return dist * 0.5; // Rough time estimate per pixel
+        }
+    }
+
+    void reconstructPath(int prev[]) {
+    currentPath.clear();
+    
+    if (prev[endPort] == -1) {
+        notification = MyString("No path found between selected ports!");
+        notificationTimer = 3.0f;
+        notificationClock.restart();
+        
+        // Clear display flags
+        showCostPath = false;
+        showTimePath = false;
+        return;
+    }
+    
+    // Reconstruct path using stack
+    Stack<int> pathStack;
+    
+    // Trace back from end to start
+    for (int at = endPort; at != -1; at = prev[at]) {
+        pathStack.push(at);
+    }
+    
+    // Check if path is valid (should include start port)
+    if (pathStack.empty() || pathStack.top() != startPort) {
+        notification = MyString("Invalid path reconstruction!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    // Transfer to currentPath
+    while (!pathStack.empty()) {
+        currentPath.push_back(pathStack.top());
+        pathStack.pop();
+    }
+    
+    // Verify path has at least 2 nodes
+    if (currentPath.size() < 2) {
+        notification = MyString("Path too short!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+    
+    // Calculate and display path statistics
+    int totalCost = 0;
+    int totalTime = 0;
+    int segments = currentPath.size() - 1;
+    
+    for (int i = 0; i < segments; i++) {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i+1);
+        
+        Voyage* v = ports[from].voyages;
+        while (v) {
+            if (v->destinationPort == to) {
+                totalCost += v->cost;
+                totalTime += v->getDurationMinutes();
+                break;
+            }
+            v = v->next;
+        }
+    }
+    
+    char buffer[256];
+    sprintf(buffer, "Path found: %d segments\nTotal Cost: $%d\nTotal Time: %dh %dm", 
+            segments, totalCost, totalTime/60, totalTime%60);
+    notification = MyString(buffer);
+    notificationTimer = 4.0f;
+    notificationClock.restart();
+    
+    // Debug output to console
+    cout << "\n=== PATH FOUND ===" << endl;
+    cout << "Path: ";
+    for (int i = 0; i < currentPath.size(); i++) {
+        cout << ports[currentPath.get(i)].name.c_str();
+        if (i < currentPath.size() - 1) cout << " → ";
+    }
+    cout << "\nSegments: " << segments << endl;
+    cout << "Total Cost: $" << totalCost << endl;
+    cout << "Total Time: " << totalTime/60 << "h " << totalTime%60 << "m" << endl;
+    cout << "=================\n" << endl;
+}
+    void drawPort(RenderWindow &window, int idx)
+    {
+        const Port &port = ports[idx];
+
+        // Queue visualization (dashed circle)
+        if (port.dockingQueueSize > 0)
+        {
+            float radius = 25.0f + port.dockingQueueSize * 3.0f;
+            float pulse = 0.5f + 0.5f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f + port.queuePulse);
+
+            CircleShape queueCircle(radius);
+            queueCircle.setPosition(port.position - Vector2f(radius, radius));
+            queueCircle.setFillColor(Color::Transparent);
+            queueCircle.setOutlineColor(Color(255, 200, 0, static_cast<Uint8>(180 * pulse)));
+            queueCircle.setOutlineThickness(2.0f);
+            queueCircle.setPointCount(32);
+            window.draw(queueCircle);
+
+            // Queue label
+            Text queueText(to_string(port.dockingQueueSize), font, 14);
+            queueText.setFillColor(Color(255, 200, 0));
+            queueText.setStyle(Text::Bold);
+            queueText.setPosition(port.position + Vector2f(15, -10));
+            window.draw(queueText);
+        }
+
+        // Port circle
+        CircleShape portCircle(10.0f);
+        portCircle.setPosition(port.position - Vector2f(10, 10));
+
+        if (idx == startPort)
+        {
+            portCircle.setFillColor(Color::Green);
+        }
+        else if (idx == endPort)
+        {
+            portCircle.setFillColor(Color(255, 165, 0)); // Orange
+        }
+        else if (idx == hoveredPort)
+        {
+            portCircle.setFillColor(Color::Yellow);
+        }
+        else if (port.isPreferred)
+        {
+            portCircle.setFillColor(Color::Magenta);
+        }
+        else
+        {
+            portCircle.setFillColor(Color(70, 130, 180)); // Steel blue
+        }
+
+        portCircle.setOutlineThickness(2.0f);
+        portCircle.setOutlineColor(Color::White);
+        window.draw(portCircle);
+
+        // Port name
+        Text nameText(port.name.c_str(), font, 14);
+        nameText.setFillColor(Color::White);
+        nameText.setStyle(Text::Bold);
+        nameText.setPosition(port.position + Vector2f(15, -25));
+        window.draw(nameText);
+
+        if (idx == hoveredPort)
+        {
+            string tooltip = string(port.name.c_str()) + "\n";
+            tooltip += "Charge: $" + to_string(port.dailyCharge) + "/day\n";
+            tooltip += "Routes: " + to_string(port.getVoyageCount()) + "\n";
+
+            // ADD: Show sample voyages
+            Voyage *v = port.voyages;
+            int count = 0;
+            while (v && count < 3)
+            {
+                tooltip += "→ " + string(ports[v->destinationPort].name.c_str()) +
+                           " (" + v->company.c_str() + ")\n";
+                v = v->next;
+                count++;
+            }
+            if (port.getVoyageCount() > 3)
+                tooltip += "...\n";
+
+            if (port.dockingQueueSize > 0)
+            {
+                tooltip += "Queue: " + to_string(port.dockingQueueSize) + " ships";
+            }
+
+            // Update background size
+            RectangleShape tooltipBg(Vector2f(220, 120 + min(3, port.getVoyageCount()) * 20));
+        }
+    }
+    void drawRoute(RenderWindow &window, int from, int to, const Voyage &voyage)
+    {
+        Vector2f start = ports[from].position;
+        Vector2f end = ports[to].position;
+
+        bool isFocused = (from == selectedRouteFrom && to == selectedRouteTo);
+        bool isInPath = false;
+
+        // Check if this edge is in current path
+        for (int i = 0; i < currentPath.size() - 1; i++)
+        {
+            if ((currentPath.get(i) == from && currentPath.get(i + 1) == to) ||
+                (currentPath.get(i) == to && currentPath.get(i + 1) == from))
+            {
+                isInPath = true;
+                break;
+            }
+        }
+
+        // Line color and thickness
+        Color lineColor(100, 150, 255, 150);
+        float thickness = 2.0f + (voyage.cost / 10000.0f);
+
+        if (isFocused)
+        {
+            lineColor = Color::Yellow;
+            thickness = 5.0f;
+        }
+        else if (isInPath && showCostPath)
+        {
+            lineColor = Color::Yellow;
+            thickness = 4.0f;
+        }
+        else if (isInPath && showTimePath)
+        {
+            lineColor = Color::Green;
+            thickness = 4.0f;
+        }
+        else if (from == hoveredPort || to == hoveredPort)
+        {
+            lineColor = Color::Cyan;
+            thickness = 3.0f;
+        }
+
+        // Draw the line
+        Vertex line[] = {
+            Vertex(start, lineColor),
+            Vertex(end, lineColor)};
+
+        for (int i = 0; i < 2; i++)
+        {
+            line[i].color = lineColor;
+        }
+
+        window.draw(line, 2, Lines);
+
+        // Draw cost label at midpoint
+        if (voyage.cost > 0)
+        {
+            Vector2f mid = (start + end) * 0.5f;
+
+            char costStr[32];
+            sprintf(costStr, "$%d", voyage.cost);
+
+            Text costText(costStr, font, 12);
+            costText.setFillColor(Color::White);
+            costText.setStyle(Text::Bold);
+
+            FloatRect bounds = costText.getLocalBounds();
+            costText.setOrigin(bounds.width / 2, bounds.height / 2);
+            costText.setPosition(mid);
+
+            // Background for readability
+            RectangleShape bg(Vector2f(bounds.width + 10, bounds.height + 5));
+            bg.setFillColor(Color(0, 0, 0, 150));
+            bg.setPosition(mid - Vector2f(bounds.width / 2 + 5, bounds.height / 2 + 3));
+            window.draw(bg);
+
+            window.draw(costText);
+        }
+
+        // Show voyage details when focused
+        if (isFocused)
+        {
+            string details = string(voyage.company.c_str()) + "\n";
+            details += "Dep: " + voyage.departure.toString() + "\n";
+            details += "Arr: " + voyage.arrival.toString() + "\n";
+            details += "Cost: $" + to_string(voyage.cost) + "\n";
+            details += "Dur: " + to_string(voyage.getDurationMinutes() / 60) + "h" +
+                       to_string(voyage.getDurationMinutes() % 60) + "m";
+
+            Vector2f infoPos = (start + end) * 0.5f + Vector2f(20, -50);
+
+            RectangleShape infoBg(Vector2f(180, 110));
+            infoBg.setFillColor(Color(0, 0, 0, 220));
+            infoBg.setOutlineColor(Color::Yellow);
+            infoBg.setOutlineThickness(2);
+            infoBg.setPosition(infoPos);
+            window.draw(infoBg);
+
+            Text infoText(details, font, 12);
+            infoText.setFillColor(Color::Yellow);
+            infoText.setPosition(infoPos + Vector2f(10, 10));
+            window.draw(infoText);
+        }
+    }
+
+   void drawPath(RenderWindow& window) {
+    if (currentPath.size() < 2) return;
+    if (!showCostPath && !showTimePath) return;
+    
+    Color pathColor = showCostPath ? Color::Yellow : Color::Green;
+    float pulse = 0.6f + 0.4f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f);
+    pathColor.a = static_cast<Uint8>(180 + 75 * pulse);
+    
+    // Draw each leg of the journey
+    for (int i = 0; i < currentPath.size() - 1; i++) {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i+1);
+        
+        Vector2f start = ports[from].position;
+        Vector2f end = ports[to].position;
+        
+        // Draw main connection line
+        Vertex line[] = {
+            Vertex(start, pathColor),
+            Vertex(end, pathColor)
+        };
+        
+        // Make indirect paths dashed
+        bool isDirect = false;
+        Voyage* v = ports[from].voyages;
+        while (v) {
+            if (v->destinationPort == to) {
+                isDirect = true;
+                break;
+            }
+            v = v->next;
+        }
+        
+        if (isDirect) {
+            // Direct route - solid line
+            window.draw(line, 2, Lines);
+        } else {
+            // Indirect connection - dashed line
+            Vector2f direction = end - start;
+            float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+            direction /= length;
+            
+            float dashLength = 15.0f;
+            float gapLength = 8.0f;
+            float traveled = 0.0f;
+            
+            while (traveled < length) {
+                float segLength = min(dashLength, length - traveled);
+                Vector2f segStart = start + direction * traveled;
+                Vector2f segEnd = segStart + direction * segLength;
+                
+                Vertex dash[] = {
+                    Vertex(segStart, pathColor),
+                    Vertex(segEnd, pathColor)
+                };
+                window.draw(dash, 2, Lines);
+                
+                traveled += segLength + gapLength;
+            }
+        }
+        
+        // Draw transfer circles at intermediate ports (except start and end)
+        if (i > 0 && i < currentPath.size() - 1) {
+            CircleShape transferCircle(8.0f);
+            transferCircle.setPosition(start - Vector2f(8, 8));
+            transferCircle.setFillColor(Color::Transparent);
+            transferCircle.setOutlineColor(Color::Cyan);
+            transferCircle.setOutlineThickness(2.0f);
+            transferCircle.setPointCount(6); // Hexagon shape
+            window.draw(transferCircle);
+            
+            // Draw transfer symbol
+            Text transferText("↻", font, 14);
+            transferText.setFillColor(Color::Cyan);
+            transferText.setPosition(start - Vector2f(5, 10));
+            window.draw(transferText);
+        }
+        
+        // Draw arrow at the end of each segment
+        if (length > 30.0f) {
+            Vector2f arrowBase = end - direction * 15.0f;
+            Vector2f perpendicular(-direction.y, direction.x);
+            
+            Vertex arrow[] = {
+                Vertex(end, pathColor),
+                Vertex(arrowBase + perpendicular * 6.0f, pathColor),
+                Vertex(end, pathColor),
+                Vertex(arrowBase - perpendicular * 6.0f, pathColor)
+            };
+            window.draw(arrow, 4, Lines);
+        }
+    }
+    
+    // Draw detailed path info panel
+    drawPathDetailsPanel(window);
+}
+
+void drawPathDetailsPanel(RenderWindow& window) {
+    if (currentPath.size() < 2) return;
+    
+    // Create detailed itinerary
+    string itinerary = "ITINERARY:\n";
+    int legNumber = 1;
+    
+    for (int i = 0; i < currentPath.size() - 1; i++) {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i+1);
+        
+        // Find voyage details
+        Voyage* v = ports[from].voyages;
+        string voyageDetails = "";
+        
+        while (v) {
+            if (v->destinationPort == to) {
+                char buf[128];
+                sprintf(buf, "%d. %s → %s\n   %s | $%d | %dh%dm\n",
+                        legNumber++,
+                        ports[from].name.c_str(),
+                        ports[to].name.c_str(),
+                        v->company.c_str(),
+                        v->cost,
+                        v->getDurationMinutes() / 60,
+                        v->getDurationMinutes() % 60);
+                voyageDetails = buf;
+                break;
+            }
+            v = v->next;
+        }
+        
+        if (voyageDetails.empty()) {
+            // Indirect transfer (no direct voyage)
+            char buf[128];
+            sprintf(buf, "%d. %s → %s\n   [TRANSFER REQUIRED]\n",
+                    legNumber++,
+                    ports[from].name.c_str(),
+                    ports[to].name.c_str());
+            voyageDetails = buf;
+        }
+        
+        itinerary += voyageDetails;
+        
+        // Add layover info if not last leg
+        if (i < currentPath.size() - 2) {
+            itinerary += "   ⏱️ Layover at port\n";
+        }
+    }
+    
+    // Draw panel
+    RectangleShape panel(Vector2f(400, min(300.0f, 50.0f + legNumber * 40.0f)));
+    panel.setFillColor(Color(0, 0, 0, 220));
+    panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
+    panel.setOutlineThickness(3);
+    panel.setPosition(1520, 180);
+    window.draw(panel);
+    
+    // Draw itinerary text
+    Text itineraryText(itinerary, font, 14);
+    itineraryText.setFillColor(Color::White);
+    itineraryText.setPosition(1530, 190);
+    window.draw(itineraryText);
+    
+    // Draw path type label
+    string pathType = showCostPath ? "CHEAPEST PATH" : "FASTEST PATH";
+    Text typeText(pathType, font, 18);
+    typeText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
+    typeText.setStyle(Text::Bold);
+    typeText.setPosition(1530, 150);
+    window.draw(typeText);
+}
+
+void drawPathSummary(RenderWindow& window) {
+    if (currentPath.size() < 2) return;
+    
+    // Calculate path statistics
+    int totalCost = 0;
+    int totalTime = 0;
+    int segments = currentPath.size() - 1;
+    
+    for (int i = 0; i < segments; i++) {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i+1);
+        
+        Voyage* v = ports[from].voyages;
+        while (v) {
+            if (v->destinationPort == to) {
+                totalCost += v->cost;
+                totalTime += v->getDurationMinutes();
+                break;
+            }
+            v = v->next;
+        }
+    }
+    
+    // Create summary text
+    string summary;
+    if (showCostPath) {
+        summary = "CHEAPEST PATH FOUND:\n";
+    } else if (showTimePath) {
+        summary = "FASTEST PATH FOUND:\n";
+    } else {
+        summary = "CURRENT PATH:\n";
+    }
+    
+    summary += "Route: ";
+    for (int i = 0; i < min(currentPath.size(), 4); i++) {
+        summary += ports[currentPath.get(i)].name.c_str();
+        if (i < min(currentPath.size(), 4) - 1) summary += " → ";
+    }
+    if (currentPath.size() > 4) summary += " → ...";
+    
+    summary += "\nSegments: " + to_string(segments);
+    summary += "\nTotal Cost: $" + to_string(totalCost);
+    summary += "\nTotal Time: " + to_string(totalTime/60) + "h " + to_string(totalTime%60) + "m";
+    
+    // Draw background panel
+    RectangleShape panel(Vector2f(400, 140));
+    panel.setFillColor(Color(0, 0, 0, 200));
+    panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
+    panel.setOutlineThickness(3);
+    panel.setPosition(1520, 20);
+    window.draw(panel);
+    
+    // Draw summary text
+    Text summaryText(summary, font, 16);
+    summaryText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
+    summaryText.setPosition(1530, 30);
+    window.draw(summaryText);
+}
+
+    void drawUI(RenderWindow &window)
+    {
+        // Left control panel
+        RectangleShape panel(Vector2f(350, 1080));
+        panel.setFillColor(Color(20, 30, 50, 220));
+        panel.setOutlineColor(Color(0, 150, 200));
+        panel.setOutlineThickness(3);
+        panel.setPosition(0, 0);
+        window.draw(panel);
+
+        // Title
+        Text title("OCEANROUTE NAV", font, 32);
+        title.setFillColor(Color::White);
+        title.setStyle(Text::Bold);
+        title.setPosition(50, 30);
+        window.draw(title);
+
+        Text subtitle("Maritime Navigation Optimizer", font, 16);
+        subtitle.setFillColor(Color(200, 230, 255));
+        subtitle.setPosition(50, 70);
+        window.draw(subtitle);
+
+        float yPos = 120;
+
+        // Current selection
+        RectangleShape selectionBox(Vector2f(320, 100));
+        selectionBox.setFillColor(Color(30, 40, 60, 200));
+        selectionBox.setOutlineColor(Color(0, 200, 150));
+        selectionBox.setOutlineThickness(2);
+        selectionBox.setPosition(20, yPos);
+        window.draw(selectionBox);
+
+        Text selectionTitle("CURRENT SELECTION", font, 14);
+        selectionTitle.setFillColor(Color(0, 255, 200));
+        selectionTitle.setStyle(Text::Bold);
+        selectionTitle.setPosition(30, yPos + 10);
+        window.draw(selectionTitle);
+
+        if (startPort != -1)
+        {
+            Text fromText("FROM: " + string(ports[startPort].name.c_str()), font, 16);
+            fromText.setFillColor(Color::Green);
+            fromText.setPosition(40, yPos + 35);
+            window.draw(fromText);
+        }
+
+        if (endPort != -1)
+        {
+            Text toText("TO: " + string(ports[endPort].name.c_str()), font, 16);
+            toText.setFillColor(Color(255, 165, 0));
+            toText.setPosition(40, yPos + 60);
+            window.draw(toText);
+        }
+
+        yPos += 120;
+
+        // Algorithm status
+        RectangleShape algoBox(Vector2f(320, 50));
+        algoBox.setFillColor(Color(40, 30, 60, 200));
+        algoBox.setOutlineColor(useAStar ? Color(255, 200, 0) : Color(0, 200, 255));
+        algoBox.setOutlineThickness(2);
+        algoBox.setPosition(20, yPos);
+        window.draw(algoBox);
+
+        string algoName = useAStar ? "A* Algorithm" : "Dijkstra's Algorithm";
+        Text algoText(algoName, font, 16);
+        algoText.setFillColor(useAStar ? Color(255, 220, 100) : Color(100, 220, 255));
+        algoText.setStyle(Text::Bold);
+        algoText.setPosition(30, yPos + 15);
+        window.draw(algoText);
+
+        yPos += 70;
+
+        // Booking Animation Status
+        if (bookingAnim.active)
+        {
+            RectangleShape animBox(Vector2f(320, 60));
+            animBox.setFillColor(Color(60, 40, 30, 200));
+            animBox.setOutlineColor(Color(255, 215, 0));
+            animBox.setOutlineThickness(2);
+            animBox.setPosition(20, yPos);
+            window.draw(animBox);
+
+            string animStatus = "SHIP #" + to_string(bookingAnim.shipId) + " ACTIVE";
+            Text animText(animStatus, font, 16);
+            animText.setFillColor(Color(255, 215, 0));
+            animText.setStyle(Text::Bold);
+            animText.setPosition(30, yPos + 20);
+            window.draw(animText);
+
+            yPos += 80;
+        }
+
+        // Preferences
+        RectangleShape prefBox(Vector2f(320, 80));
+        prefBox.setFillColor(Color(30, 40, 30, 200));
+        prefBox.setOutlineColor(Color(100, 255, 100));
+        prefBox.setOutlineThickness(2);
+        prefBox.setPosition(20, yPos);
+        window.draw(prefBox);
+
+        Text prefTitle("PREFERENCES", font, 14);
+        prefTitle.setFillColor(Color(100, 255, 100));
+        prefTitle.setStyle(Text::Bold);
+        prefTitle.setPosition(30, yPos + 10);
+        window.draw(prefTitle);
+
+        string prefStr = "Company: ";
+        prefStr += preferredCompany.empty() ? "Any" : preferredCompany.c_str();
+        prefStr += "\nMax Cost: $" + to_string(maxCostPerLeg);
+
+        Text prefText(prefStr, font, 12);
+        prefText.setFillColor(Color::White);
+        prefText.setPosition(40, yPos + 35);
+        window.draw(prefText);
+
+        yPos += 100;
+
+        // Controls
+        RectangleShape controlBox(Vector2f(320, 450));
+        controlBox.setFillColor(Color(40, 30, 40, 200));
+        controlBox.setOutlineColor(Color(200, 100, 255));
+        controlBox.setOutlineThickness(2);
+        controlBox.setPosition(20, yPos);
+        window.draw(controlBox);
+
+        Text controlTitle("CONTROLS", font, 18);
+        controlTitle.setFillColor(Color(200, 100, 255));
+        controlTitle.setStyle(Text::Bold);
+        controlTitle.setPosition(30, yPos + 10);
+        window.draw(controlTitle);
+
+        vector<string> controls = {
+            "[C] - Find Cheapest Path",
+            "[F] - Find Fastest Path",
+            "[A] - Toggle A*/Dijkstra",
+            "[B] - Book Route (Instant)",
+            "[N] - Book Route (Animated)",
+            "[P] - Set Preferences",
+            "[Q] - Clear Filters",
+            "[R] - Reset All",
+            "[ESC] - Close",
+            "",
+            "Mouse Controls:",
+            "  Left Click - Select Ports",
+            "  Click Route - View Details",
+            "  Ctrl+Click - Toggle Preferred",
+            "  Hover - See Port Info",
+            "",
+            "Booking Animation:",
+            "  Ship follows selected path",
+            "  Port queues update in real-time",
+            "  Progress bar shows journey %"};
+
+        float controlY = yPos + 45;
+        for (const string &ctrl : controls)
+        {
+            Text ctrlText(ctrl, font, 14);
+            ctrlText.setFillColor(Color::White);
+            ctrlText.setPosition(40, controlY);
+            window.draw(ctrlText);
+            controlY += 25;
+        }
+
+        yPos += 470;
+
+        // Input box
+        if (inputActive)
+        {
+            RectangleShape inputBox(Vector2f(320, 60));
+            inputBox.setFillColor(Color(50, 40, 30, 220));
+            inputBox.setOutlineColor(Color(255, 200, 0));
+            inputBox.setOutlineThickness(3);
+            inputBox.setPosition(20, yPos);
+            window.draw(inputBox);
+
+            string prompt = isPreferenceMode ? "Preferences: " : "Search: ";
+            Text promptText(prompt, font, 14);
+            promptText.setFillColor(Color(255, 220, 150));
+            promptText.setPosition(30, yPos + 10);
+            window.draw(promptText);
+
+            Text inputTextDisplay(inputText.c_str() + string("_"), font, 16);
+            inputTextDisplay.setFillColor(Color::White);
+            inputTextDisplay.setStyle(Text::Bold);
+            inputTextDisplay.setPosition(30, yPos + 35);
+            window.draw(inputTextDisplay);
+        }
+
+        // Right legend panel
+        RectangleShape legendPanel(Vector2f(300, 450));
+        legendPanel.setFillColor(Color(20, 30, 50, 220));
+        legendPanel.setOutlineColor(Color(255, 150, 0));
+        legendPanel.setOutlineThickness(3);
+        legendPanel.setPosition(1620, 30);
+        window.draw(legendPanel);
+
+        Text legendTitle("LEGEND", font, 24);
+        legendTitle.setFillColor(Color(255, 180, 0));
+        legendTitle.setStyle(Text::Bold);
+        legendTitle.setPosition(1670, 40);
+        window.draw(legendTitle);
+
+        vector<pair<Color, string>> legendItems = {
+            {Color::Green, "Start Port"},
+            {Color(255, 165, 0), "End Port"},
+            {Color::Yellow, "Hovered Port"},
+            {Color::Magenta, "Preferred Port"},
+            {Color(100, 150, 255), "Normal Route"},
+            {Color::Yellow, "Cheapest Path"},
+            {Color::Green, "Fastest Path"},
+            {Color(255, 215, 0), "Moving Ship"}, // ADD THIS LINE
+            {Color(255, 200, 0), "Docking Queue"},
+            {Color::Cyan, "Hovered Route"}};
+
+        float legendY = 90;
+        for (const auto &item : legendItems)
+        {
+            // Draw colored square
+            RectangleShape colorBox(Vector2f(12, 12));
+            colorBox.setFillColor(item.first);
+            colorBox.setPosition(1630, legendY);
+            window.draw(colorBox);
+
+            // Item text
+            Text itemText(item.second, font, 14);
+            itemText.setFillColor(Color::White);
+            itemText.setPosition(1650, legendY - 3);
+            window.draw(itemText);
+
+            legendY += 30;
+        }
+
+        // Statistics
+        int totalRoutes = 0;
+        int activeShips = bookingAnim.active ? 1 : 0;
+        for (int i = 0; i < portCount; i++)
+        {
+            totalRoutes += ports[i].getVoyageCount();
+        }
+
+        string stats = "Ports: " + to_string(portCount) + "\n";
+        stats += "Routes: " + to_string(totalRoutes) + "\n";
+        stats += "Active Ships: " + to_string(activeShips) + "\n";
+        stats += "Queued Ships: ";
+
+        int totalQueued = 0;
+        for (int i = 0; i < portCount; i++)
+        {
+            totalQueued += ports[i].dockingQueueSize;
+        }
+        stats += to_string(totalQueued);
+
+        Text statsText(stats, font, 14);
+        statsText.setFillColor(Color(180, 220, 255));
+        statsText.setPosition(1630, 400);
+        window.draw(statsText);
+
+        // Notification
+        if (notificationTimer > 0)
+        {
+            float elapsed = notificationClock.getElapsedTime().asSeconds();
+            float alpha = min(1.0f, notificationTimer - elapsed) * 255.0f;
+
+            RectangleShape notifBg(Vector2f(500, 50));
+            notifBg.setFillColor(Color(0, 0, 0, static_cast<Uint8>(alpha * 0.8f)));
+            notifBg.setOutlineColor(Color(255, 255, 255, static_cast<Uint8>(alpha)));
+            notifBg.setOutlineThickness(2);
+            notifBg.setPosition(710, 30);
+            window.draw(notifBg);
+
+            Text notifText(notification.c_str(), font, 16);
+            notifText.setFillColor(Color(255, 255, 255, static_cast<Uint8>(alpha)));
+            notifText.setStyle(Text::Bold);
+            FloatRect bounds = notifText.getLocalBounds();
+            notifText.setOrigin(bounds.width / 2, bounds.height / 2);
+            notifText.setPosition(960, 55);
+            window.draw(notifText);
+        }
+    }
+
+public:
+    MaritimeSystem() : portCount(0), shipCount(0), startPort(-1), endPort(-1),
+                       hoveredPort(-1), selectedRouteFrom(-1), selectedRouteTo(-1),
+                       showCostPath(false), showTimePath(false), useAStar(false),
+                       routeFocusMode(false), maxCostPerLeg(1000000),
+                       maxLayoverDays(7), inputActive(false), isPreferenceMode(false),
+                       notificationTimer(0.0f), showBookingAnimation(false)
+    {
+
+        // Initialize booking animation to inactive state
+        bookingAnim.currentLeg = -1;
+        bookingAnim.progress = 0.0f;
+        bookingAnim.active = false;
+        bookingAnim.shipId = -1;
+        bookingAnim.totalCost = 0;
+        bookingAnim.totalTime = 0;
+        bookingAnim.position = Vector2f(0, 0);
+
+        // Load graphics
+        if (!mapTexture.loadFromFile("./texture/map.jpg"))
+        {
+            // Create fallback blue background
+            mapTexture.create(1920, 1080);
+            Image img = mapTexture.copyToImage();
+            for (unsigned int x = 0; x < 1920; x++)
+            {
+                for (unsigned int y = 0; y < 1080; y++)
+                {
+                    int blue = 40 + (x + y) % 20;
+                    img.setPixel(x, y, Color(10, 20, blue));
+                }
+            }
+            mapTexture.update(img);
+        }
+        mapSprite.setTexture(mapTexture);
+
+        if (!font.loadFromFile("./font/ArialMdmItl.ttf"))
+        {
+            // Use default font if custom fails
+            font.loadFromFile("arial.ttf");
+        }
+
+        // Initialize system
+        initializePortPositions();
+        loadPortCharges();
+        loadRoutes();
+
+        // Seed random for ship IDs
+        srand(static_cast<unsigned int>(time(nullptr)));
+
+        notification = MyString("System Ready - Press [N] for booking animation");
+        notificationTimer = 3.0f;
+        notificationClock.restart();
+        animationClock.restart();
+    }
+
+    void handleClick(const Vector2f &mousePos, bool rightClick)
+    {
+        if (rightClick)
+        {
+            routeFocusMode = false;
+            selectedRouteFrom = selectedRouteTo = -1;
+            return;
+        }
+
+        // Check port clicks
+        hoveredPort = -1;
+        for (int i = 0; i < portCount; i++)
+        {
+            float dist = sqrt(pow(mousePos.x - ports[i].position.x, 2) +
+                              pow(mousePos.y - ports[i].position.y, 2));
+
+            if (dist < 15.0f)
+            {
+                hoveredPort = i;
+
+                if (Keyboard::isKeyPressed(Keyboard::LControl))
+                {
+                    ports[i].isPreferred = !ports[i].isPreferred;
+                    notification = MyString(ports[i].isPreferred ? "Marked as preferred" : "Removed from preferred");
+                    notificationTimer = 2.0f;
+                    notificationClock.restart();
+                }
+                else
+                {
+                    if (startPort == -1)
+                    {
+                        startPort = i;
+                        notification = MyString("Start port selected");
+                    }
+                    else if (endPort == -1 && i != startPort)
+                    {
+                        endPort = i;
+                        notification = MyString("End port selected");
+                    }
+                    else
+                    {
+                        startPort = i;
+                        endPort = -1;
+                        notification = MyString("New start port selected");
+                    }
+                    notificationTimer = 2.0f;
+                    notificationClock.restart();
+                }
+                return;
+            }
+        }
+
+        // Check route clicks
+        selectedRouteFrom = selectedRouteTo = -1;
+        float closestDist = 20.0f;
+
+        for (int i = 0; i < portCount; i++)
+        {
+            Voyage *v = ports[i].voyages;
+            while (v)
+            {
+                Vector2f p1 = ports[i].position;
+                Vector2f p2 = ports[v->destinationPort].position;
+
+                // Calculate distance from point to line segment
+                Vector2f line = p2 - p1;
+                float lineLength = sqrt(line.x * line.x + line.y * line.y);
+                if (lineLength < 0.001f)
+                    continue;
+
+                Vector2f lineDir = line / lineLength;
+                Vector2f toPoint = mousePos - p1;
+                float dotProduct = toPoint.x * lineDir.x + toPoint.y * lineDir.y;
+                float projection = max(0.0f, min(lineLength, dotProduct));
+                Vector2f closest = p1 + lineDir * projection;
+
+                Vector2f diff = mousePos - closest;
+                float dist = sqrt(diff.x * diff.x + diff.y * diff.y);
+
+                if (dist < closestDist)
+                {
+                    closestDist = dist;
+                    selectedRouteFrom = i;
+                    selectedRouteTo = v->destinationPort;
+                    routeFocusMode = true;
+                }
+                v = v->next;
+            }
+        }
+
+        if (selectedRouteFrom != -1)
+        {
+            notification = MyString("Route selected - see details");
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+        }
+    }
+
+    void handleHover(const Vector2f &mousePos)
+    {
+        hoveredPort = -1;
+        for (int i = 0; i < portCount; i++)
+        {
+            float dist = sqrt(pow(mousePos.x - ports[i].position.x, 2) +
+                              pow(mousePos.y - ports[i].position.y, 2));
+
+            if (dist < 15.0f)
+            {
+                hoveredPort = i;
+                break;
+            }
+        }
+    }
+
+    void handleKey(Keyboard::Key key)
+    {
+        switch (key)
+        {
+        case Keyboard::C: // Cheapest path
+    if (startPort != -1 && endPort != -1) {
+        if (useAStar) astar(true);
+        else dijkstra(true);
+        showCostPath = true;
+        showTimePath = false;
+        
+        if (bookingAnim.active) {
+            bookingAnim.stop();
+            notification = MyString("Finding new path... animation stopped");
+            notificationTimer = 2.0f;
+        }
+        
+        // Check if path might be indirect
+        if (currentPath.size() > 2) {
+            notification = MyString("Multi-leg path found! Check itinerary panel.");
+            notificationTimer = 3.0f;
+        }
+    } else {
+        notification = MyString("Select START port (click), then END port");
+        notificationTimer = 2.5f;
+    }
+    notificationClock.restart();
+    break;
+
+        case Keyboard::F: // Fastest path
+            if (startPort != -1 && endPort != -1)
+            {
+                if (useAStar)
+                    astar(false);
+                else
+                    dijkstra(false);
+                showTimePath = true;
+                showCostPath = false;
+
+                // Stop any active animation
+                if (bookingAnim.active)
+                {
+                    bookingAnim.stop();
+                    notification = MyString("Animation stopped - New path calculated");
+                    notificationTimer = 2.0f;
+                    notificationClock.restart();
+                }
+            }
+            else
+            {
+                notification = MyString("Please select both start and end ports first");
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::A: // Toggle algorithm
+            useAStar = !useAStar;
+            notification = MyString(useAStar ? "Switched to A* algorithm" : "Switched to Dijkstra algorithm");
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+            break;
+
+        case Keyboard::B: // Book route (instant booking)
+            if (currentPath.size() >= 2)
+            {
+                // Instant booking - add ships to all ports in path
+                for (int i = 0; i < currentPath.size(); i++)
+                {
+                    int portIdx = currentPath.get(i);
+                    ports[portIdx].dockingQueueSize++;
+                    ports[portIdx].queuePulse = static_cast<float>(i) * 0.8f;
+                }
+
+                // Calculate statistics
+                int totalCost = 0;
+                int totalTime = 0;
+                for (int i = 0; i < currentPath.size() - 1; i++)
+                {
+                    int from = currentPath.get(i);
+                    int to = currentPath.get(i + 1);
+
+                    Voyage *v = ports[from].voyages;
+                    while (v)
+                    {
+                        if (v->destinationPort == to)
+                        {
+                            totalCost += v->cost;
+                            totalTime += v->getDurationMinutes();
+                            break;
+                        }
+                        v = v->next;
+                    }
+                }
+
+                char buffer[256];
+                sprintf(buffer, "Route booked instantly!\n%d ships added to port queues\nTotal Cost: $%d\nTotal Time: %dh %dm",
+                        currentPath.size(), totalCost, totalTime / 60, totalTime % 60);
+                notification = MyString(buffer);
+                notificationTimer = 4.0f;
+                notificationClock.restart();
+            }
+            else
+            {
+                notification = MyString("No path to book! Find a path first (C/F keys)");
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::N: // Book route (animated)
+            if (currentPath.size() >= 2)
+            {
+                if (!bookingAnim.active)
+                {
+                    // Start animated booking
+                    startBookingAnimation();
+                }
+                else
+                {
+                    // Already animating - show status
+                    char buffer[128];
+                    sprintf(buffer, "Animation already running!\nShip #%d at leg %d/%d",
+                            bookingAnim.shipId,
+                            bookingAnim.currentLeg + 1,
+                            currentPath.size() - 1);
+                    notification = MyString(buffer);
+                    notificationTimer = 3.0f;
+                    notificationClock.restart();
+                }
+            }
+            else
+            {
+                notification = MyString("No path to animate! Find a path first (C/F keys)");
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::P: // Preferences
+            inputActive = true;
+            isPreferenceMode = true;
+            inputText = MyString("");
+            notification = MyString("Enter preferences (e.g., 'company:Maersk' or 'maxcost:5000')");
+            notificationTimer = 3.0f;
+            notificationClock.restart();
+            break;
+
+        case Keyboard::Q: // Clear filters
+            preferredCompany = MyString("");
+            maxCostPerLeg = 1000000;
+            maxLayoverDays = 7;
+            notification = MyString("All filters cleared to default values");
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+            break;
+
+        case Keyboard::R: // Reset all
+            startPort = endPort = -1;
+            currentPath.clear();
+            exploredEdges.clear();
+            showCostPath = showTimePath = false;
+            routeFocusMode = false;
+            selectedRouteFrom = selectedRouteTo = -1;
+            preferredCompany = MyString("");
+            maxCostPerLeg = 1000000;
+            maxLayoverDays = 7;
+
+            // Stop animation
+            if (bookingAnim.active)
+            {
+                bookingAnim.stop();
+            }
+
+            // Clear all port queues
+            for (int i = 0; i < portCount; i++)
+            {
+                ports[i].dockingQueueSize = 0;
+                ports[i].isPreferred = false;
+                ports[i].queuePulse = 0.0f;
+            }
+
+            notification = MyString("System completely reset");
+            notificationTimer = 2.5f;
+            notificationClock.restart();
+            break;
+
+        case Keyboard::Enter:
+            if (inputActive && !inputText.empty())
+            {
+                if (isPreferenceMode)
+                {
+                    // Parse preferences
+                    string str = inputText.c_str();
+
+                    // Remove leading/trailing spaces
+                    while (!str.empty() && isspace(str[0]))
+                        str.erase(0, 1);
+                    while (!str.empty() && isspace(str.back()))
+                        str.pop_back();
+
+                    if (str.find("company:") == 0)
+                    {
+                        preferredCompany = MyString(str.substr(8).c_str());
+                        char buffer[128];
+                        sprintf(buffer, "Company filter set to: %s", preferredCompany.c_str());
+                        notification = MyString(buffer);
+                    }
+                    else if (str.find("maxcost:") == 0)
+                    {
+                        try
+                        {
+                            maxCostPerLeg = stoi(str.substr(8));
+                            char buffer[128];
+                            sprintf(buffer, "Max cost per leg set to: $%d", maxCostPerLeg);
+                            notification = MyString(buffer);
+                        }
+                        catch (...)
+                        {
+                            notification = MyString("Invalid cost value! Use: maxcost:5000");
+                        }
+                    }
+                    else if (str.find("maxlayover:") == 0)
+                    {
+                        try
+                        {
+                            maxLayoverDays = stoi(str.substr(11));
+                            char buffer[128];
+                            sprintf(buffer, "Max layover days set to: %d", maxLayoverDays);
+                            notification = MyString(buffer);
+                        }
+                        catch (...)
+                        {
+                            notification = MyString("Invalid layover value! Use: maxlayover:3");
+                        }
+                    }
+                    else
+                    {
+                        notification = MyString("Unknown preference! Use: company:X, maxcost:X, maxlayover:X");
+                    }
+                }
+                inputActive = false;
+                notificationTimer = 2.5f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::Escape:
+            inputActive = false;
+            routeFocusMode = false;
+            selectedRouteFrom = selectedRouteTo = -1;
+
+            // Stop animation on escape if needed
+            if (bookingAnim.active && Keyboard::isKeyPressed(Keyboard::LControl))
+            {
+                bookingAnim.stop();
+                notification = MyString("Animation stopped (Ctrl+Esc)");
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::Space:
+            // Pause/resume animation
+            if (bookingAnim.active)
+            {
+                static bool paused = false;
+                paused = !paused;
+
+                if (paused)
+                {
+                    // Store current animation time
+                    static Time pausedTime;
+                    pausedTime = bookingAnim.animationClock.getElapsedTime();
+                    notification = MyString("Animation paused");
+                }
+                else
+                {
+                    // Resume from stored time
+                    notification = MyString("Animation resumed");
+                }
+                notificationTimer = 1.5f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::S: // Speed control for animation
+            if (bookingAnim.active && Keyboard::isKeyPressed(Keyboard::LShift))
+            {
+                notification = MyString("Animation speed increased (Shift+S)");
+                notificationTimer = 1.5f;
+                notificationClock.restart();
+            }
+            else if (bookingAnim.active && Keyboard::isKeyPressed(Keyboard::LControl))
+            {
+                notification = MyString("Animation speed decreased (Ctrl+S)");
+                notificationTimer = 1.5f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::T: // Toggle path display
+            if (showCostPath || showTimePath)
+            {
+                showCostPath = !showCostPath;
+                showTimePath = !showTimePath;
+                notification = MyString(showCostPath ? "Showing cost path" : "Showing time path");
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+            }
+            break;
+
+        case Keyboard::H: // Help
+            notification = MyString("Help: C=Cheapest, F=Fastest, B=Book, N=Animate, R=Reset, ESC=Exit");
+            notificationTimer = 4.0f;
+            notificationClock.restart();
+            break;
+
+        default:
+            // Check for number keys to select predefined routes
+            if (key >= Keyboard::Num0 && key <= Keyboard::Num9)
+            {
+                int number = key - Keyboard::Num0;
+
+                // Predefined routes for quick testing
+                switch (number)
+                {
+                case 1: // Karachi to Singapore
+                    startPort = findPort("Karachi");
+                    endPort = findPort("Singapore");
+                    if (startPort != -1 && endPort != -1)
+                    {
+                        notification = MyString("Quick test: Karachi → Singapore");
+                        notificationTimer = 2.0f;
+                    }
+                    break;
+                case 2: // Dubai to HongKong
+                    startPort = findPort("Dubai");
+                    endPort = findPort("HongKong");
+                    if (startPort != -1 && endPort != -1)
+                    {
+                        notification = MyString("Quick test: Dubai → HongKong");
+                        notificationTimer = 2.0f;
+                    }
+                    break;
+                case 3: // London to NewYork
+                    startPort = findPort("London");
+                    endPort = findPort("NewYork");
+                    if (startPort != -1 && endPort != -1)
+                    {
+                        notification = MyString("Quick test: London → NewYork");
+                        notificationTimer = 2.0f;
+                    }
+                    break;
+                case 4: // Tokyo to Sydney
+                    startPort = findPort("Tokyo");
+                    endPort = findPort("Sydney");
+                    if (startPort != -1 && endPort != -1)
+                    {
+                        notification = MyString("Quick test: Tokyo → Sydney");
+                        notificationTimer = 2.0f;
+                    }
+                    break;
+                }
+                notificationClock.restart();
+            }
+            break;
+        }
+    }
+
+    void handleText(Uint32 unicode)
+    {
+        if (!inputActive)
+            return;
+
+        if (unicode == 8)
+        { // Backspace
+            if (!inputText.empty())
+            {
+                string str = inputText.c_str();
+                str.pop_back();
+                inputText = MyString(str.c_str());
+            }
+        }
+        else if (unicode >= 32 && unicode < 128)
+        { // Printable characters
+            string str = inputText.c_str();
+            str += static_cast<char>(unicode);
+            inputText = MyString(str.c_str());
+        }
+    }
+
+    void update(float dt)
+    {
+        // Update notification timer
+        if (notificationTimer > 0)
+        {
+            notificationTimer -= dt;
+        }
+
+        // UPDATE BOOKING ANIMATION
+        if (bookingAnim.active)
+        {
+            updateBookingAnimation(dt);
+        }
+
+        // Update port queue animations
+        for (int i = 0; i < portCount; i++)
+        {
+            if (ports[i].dockingQueueSize > 0)
+            {
+                ports[i].queuePulse += dt * 0.5f;
+                if (ports[i].queuePulse > 6.28f)
+                {
+                    ports[i].queuePulse -= 6.28f;
+                }
+            }
+        }
+    }
+
+    void draw(RenderWindow& window) {
+    // Draw map
+    window.draw(mapSprite);
+    
+    // Draw all routes
+    for (int i = 0; i < portCount; i++) {
+        Voyage* v = ports[i].voyages;
+        while (v) {
+            // ... existing filtering code ...
+            drawRoute(window, i, v->destinationPort, *v);
+            v = v->next;
+        }
+    }
+    
+    // Draw explored edges from pathfinding (visual feedback)
+    if (!exploredEdges.empty()) {
+        float alpha = 100.0f + 100.0f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f);
+        Color exploreColor(100, 200, 255, static_cast<Uint8>(alpha)); // Light blue
+        
+        for (int i = 0; i < exploredEdges.size(); i += 2) {
+            int from = exploredEdges.get(i);
+            int to = exploredEdges.get(i+1);
+            
+            Vertex line[] = {
+                Vertex(ports[from].position, exploreColor),
+                Vertex(ports[to].position, exploreColor)
+            };
+            window.draw(line, 2, Lines);
+            
+            // Draw small dots on explored ports
+            CircleShape exploredDot(3.0f);
+            exploredDot.setFillColor(Color(100, 200, 255, 180));
+            exploredDot.setPosition(ports[from].position - Vector2f(3, 3));
+            window.draw(exploredDot);
+            exploredDot.setPosition(ports[to].position - Vector2f(3, 3));
+            window.draw(exploredDot);
+        }
+    }
+    
+    // DRAW THE PATH (IMPORTANT - this was missing!)
+    drawPath(window);
+    
+    // Draw booking animation (if active)
+    if (bookingAnim.active) {
+        drawBookingAnimation(window);
+    }
+    
+    // Draw all ports (on top of routes and paths)
+    for (int i = 0; i < portCount; i++) {
+        drawPort(window, i);
+    }
+    
+    // Draw booking info panel (if active)
+    if (bookingAnim.active) {
+        drawBookingInfo(window);
+    }
+    
+    // Draw UI
+    drawUI(window);
+}
+    bool isInputActive() const { return inputActive; }
+};
+// ==================== BOOKING ANIMATION IMPLEMENTATION ====================
+inline void MaritimeSystem::startBookingAnimation()
+{
+    if (currentPath.size() < 2)
+    {
+        notification = MyString("No path to animate!");
+        notificationTimer = 2.0f;
+        notificationClock.restart();
+        return;
+    }
+
+    bookingAnim.start(startPort);
+    showBookingAnimation = true;
+
+    // Reset queues for clean animation
+    for (int i = 0; i < portCount; i++)
+    {
+        ports[i].dockingQueueSize = 0;
+    }
+
+    // Calculate total cost and time
+    bookingAnim.totalCost = 0;
+    bookingAnim.totalTime = 0;
+    for (int i = 0; i < currentPath.size() - 1; i++)
+    {
+        int from = currentPath.get(i);
+        int to = currentPath.get(i + 1);
+
+        Voyage *v = ports[from].voyages;
+        while (v)
+        {
+            if (v->destinationPort == to)
+            {
+                bookingAnim.totalCost += v->cost;
+                bookingAnim.totalTime += v->getDurationMinutes();
+                break;
+            }
+            v = v->next;
+        }
+    }
+
+    char buffer[128];
+    sprintf(buffer, "Booking animation started! Ship #%d", bookingAnim.shipId);
+    notification = MyString(buffer);
+    notificationTimer = 3.0f;
+    notificationClock.restart();
+}
+
+inline void MaritimeSystem::updateBookingAnimation(float dt)
+{
+    if (!bookingAnim.active)
+        return;
+
+    float animationSpeed = 0.4f; // Adjust speed: higher = faster
+
+    if (bookingAnim.currentLeg >= 0 && bookingAnim.currentLeg < currentPath.size() - 1)
+    {
+        bookingAnim.progress += dt * animationSpeed;
+
+        if (bookingAnim.progress >= 1.0f)
+        {
+            // Ship arrived at current destination
+            int arrivedPort = currentPath.get(bookingAnim.currentLeg + 1);
+
+            // Add to port queue with animation
+            ports[arrivedPort].dockingQueueSize++;
+            ports[arrivedPort].queuePulse = bookingAnim.currentLeg * 0.8f;
+
+            // Move to next leg
+            bookingAnim.currentLeg++;
+            bookingAnim.progress = 0.0f;
+
+            // Check if animation complete
+            if (bookingAnim.currentLeg >= currentPath.size() - 1)
+            {
+                // Animation complete - ship at final port
+                bookingAnim.active = false;
+                showBookingAnimation = false;
+
+                int finalPort = currentPath.get(currentPath.size() - 1);
+                ports[finalPort].dockingQueueSize += 2; // Ship + cargo ops
+
+                char buffer[128];
+                sprintf(buffer, "Route completed! Ship #%d docked at %s",
+                        bookingAnim.shipId, ports[finalPort].name.c_str());
+                notification = MyString(buffer);
+                notificationTimer = 4.0f;
+                notificationClock.restart();
+                return;
+            }
+        }
+
+        // Update ship position
+        int from = currentPath.get(bookingAnim.currentLeg);
+        int to = currentPath.get(bookingAnim.currentLeg + 1);
+        Vector2f start = ports[from].position;
+        Vector2f end = ports[to].position;
+        bookingAnim.position = start + (end - start) * bookingAnim.progress;
+    }
+}
+
+inline void MaritimeSystem::drawBookingAnimation(RenderWindow &window)
+{
+    if (!bookingAnim.active)
+        return;
+
+    float elapsed = bookingAnim.animationClock.getElapsedTime().asSeconds();
+    float pulse = 0.7f + 0.3f * sin(elapsed * 4.0f);
+
+    // === DRAW SHIP ===
+    Vector2f shipPos = bookingAnim.position;
+
+    // Ship hull (main body)
+    CircleShape hull(12.0f, 6); // Hexagon shape
+    hull.setPosition(shipPos - Vector2f(12, 12));
+    hull.setFillColor(Color(255, 215, 0, 240));    // Gold color
+    hull.setOutlineColor(Color(139, 69, 19, 255)); // Brown outline
+    hull.setOutlineThickness(2.0f);
+    hull.setRotation(45.0f); // Diamond orientation
+    window.draw(hull);
+
+    // Ship cabin
+    RectangleShape cabin(Vector2f(10.0f, 8.0f));
+    cabin.setPosition(shipPos - Vector2f(5, 18));
+    cabin.setFillColor(Color(70, 130, 180, 255)); // Steel blue
+    cabin.setOutlineColor(Color::White);
+    cabin.setOutlineThickness(1.0f);
+    window.draw(cabin);
+
+    // Ship mast
+    RectangleShape mast(Vector2f(3.0f, 20.0f));
+    mast.setPosition(shipPos - Vector2f(1.5f, 38));
+    mast.setFillColor(Color(160, 82, 45)); // Sienna brown
+    window.draw(mast);
+
+    // Ship flag
+    ConvexShape flag(3);
+    flag.setPoint(0, Vector2f(0, 0));
+    flag.setPoint(1, Vector2f(15, 7));
+    flag.setPoint(2, Vector2f(0, 14));
+    flag.setPosition(shipPos.x + 1.5f, shipPos.y - 38);
+    flag.setFillColor(Color::Red);
+    window.draw(flag);
+
+    // Ship name/number
+    Text shipText("S" + to_string(bookingAnim.shipId), font, 10);
+    shipText.setFillColor(Color::Black);
+    shipText.setStyle(Text::Bold);
+    FloatRect textBounds = shipText.getLocalBounds();
+    shipText.setOrigin(textBounds.width / 2, textBounds.height / 2);
+    shipText.setPosition(shipPos.x, shipPos.y - 5);
+    window.draw(shipText);
+
+    // === DRAW SHIP WAKE ===
+    Vector2f direction;
+    if (bookingAnim.currentLeg >= 0 && bookingAnim.currentLeg < currentPath.size() - 1)
+    {
+        int from = currentPath.get(bookingAnim.currentLeg);
+        int to = currentPath.get(bookingAnim.currentLeg + 1);
+        direction = ports[to].position - ports[from].position;
+        float length = sqrt(direction.x * direction.x + direction.y * direction.y);
+        if (length > 0)
+            direction /= length;
+    }
+
+    // Create wake particles
+    for (int i = 0; i < 8; i++)
+    {
+        float offset = i * 4.0f;
+        float size = 4.0f - i * 0.3f;
+        float alpha = 80.0f - i * 8.0f;
+
+        // Position behind ship
+        Vector2f wakePos = shipPos - direction * (10.0f + offset);
+
+        // Add some randomness
+        wakePos.x += (rand() % 7 - 3);
+        wakePos.y += (rand() % 7 - 3);
+
+        CircleShape wake(size);
+        wake.setPosition(wakePos - Vector2f(size, size));
+        wake.setFillColor(Color(135, 206, 250, static_cast<Uint8>(alpha * pulse))); // Light blue
+        window.draw(wake);
+    }
+
+    // === DRAW PATH PROGRESS ===
+    if (bookingAnim.currentLeg >= 0 && bookingAnim.currentLeg < currentPath.size() - 1)
+    {
+        int from = currentPath.get(bookingAnim.currentLeg);
+        int to = currentPath.get(bookingAnim.currentLeg + 1);
+        Vector2f start = ports[from].position;
+        Vector2f end = ports[to].position;
+
+        // Completed portion (green)
+        Vertex completedLine[] = {
+            Vertex(start, Color(50, 205, 50, 180)), // Lime green
+            Vertex(shipPos, Color(50, 205, 50, 180))};
+        window.draw(completedLine, 2, Lines);
+
+        // Remaining portion (light blue)
+        Vertex remainingLine[] = {
+            Vertex(shipPos, Color(135, 206, 235, 120)), // Sky blue
+            Vertex(end, Color(135, 206, 235, 120))};
+        window.draw(remainingLine, 2, Lines);
+
+        // Draw distance markers
+        float distance = sqrt(pow(end.x - start.x, 2) + pow(end.y - start.y, 2));
+        int segments = static_cast<int>(distance / 80.0f);
+
+        for (int i = 1; i < segments; i++)
+        {
+            float t = i / static_cast<float>(segments);
+            Vector2f markerPos = start + (end - start) * t;
+
+            CircleShape marker(3.0f);
+            marker.setPosition(markerPos - Vector2f(3, 3));
+            marker.setFillColor(Color(255, 255, 255, 100));
+            window.draw(marker);
+        }
+    }
+}
+
+inline void MaritimeSystem::drawBookingInfo(RenderWindow &window)
+{
+    if (!bookingAnim.active)
+        return;
+
+    // === BOOKING INFO PANEL ===
+    RectangleShape infoPanel(Vector2f(320, 220));
+    infoPanel.setFillColor(Color(0, 20, 40, 230));
+    infoPanel.setOutlineColor(Color(255, 215, 0, 255)); // Gold border
+    infoPanel.setOutlineThickness(3);
+    infoPanel.setPosition(20, 820);
+    window.draw(infoPanel);
+
+    // Panel title
+    Text title("LIVE BOOKING TRACKER", font, 18);
+    title.setFillColor(Color(255, 215, 0));
+    title.setStyle(Text::Bold);
+    title.setPosition(35, 830);
+    window.draw(title);
+
+    // Ship info
+    Text shipInfo("Ship: #" + to_string(bookingAnim.shipId), font, 16);
+    shipInfo.setFillColor(Color::Cyan);
+    shipInfo.setPosition(35, 860);
+    window.draw(shipInfo);
+
+    // Current leg info
+    if (bookingAnim.currentLeg >= 0 && bookingAnim.currentLeg < currentPath.size() - 1)
+    {
+        int fromIdx = currentPath.get(bookingAnim.currentLeg);
+        int toIdx = currentPath.get(bookingAnim.currentLeg + 1);
+        Port &fromPort = ports[fromIdx];
+        Port &toPort = ports[toIdx];
+
+        // Leg description
+        string legText = "Leg " + to_string(bookingAnim.currentLeg + 1) + "/" +
+                         to_string(currentPath.size() - 1) + ":\n";
+        legText += fromPort.name.c_str();
+        legText += " → ";
+        legText += toPort.name.c_str();
+
+        Text legDisplay(legText, font, 14);
+        legDisplay.setFillColor(Color::White);
+        legDisplay.setPosition(35, 890);
+        window.draw(legDisplay);
+
+        // Voyage details
+        Voyage *voyage = nullptr;
+        Voyage *v = fromPort.voyages;
+        while (v)
+        {
+            if (v->destinationPort == toIdx)
+            {
+                voyage = v;
+                break;
+            }
+            v = v->next;
+        }
+
+        if (voyage)
+        {
+            string details = "Cost: $" + to_string(voyage->cost) + "\n";
+            int hours = voyage->getDurationMinutes() / 60;
+            int mins = voyage->getDurationMinutes() % 60;
+            details += "Time: " + to_string(hours) + "h " + to_string(mins) + "m\n";
+            details += "Company: " + string(voyage->company.c_str());
+
+            Text detailsText(details, font, 12);
+            detailsText.setFillColor(Color(144, 238, 144)); // Light green
+            detailsText.setPosition(35, 950);
+            window.draw(detailsText);
+        }
+    }
+
+    // === PROGRESS BAR ===
+    float totalProgress = 0.0f;
+    if (currentPath.size() > 1)
+    {
+        totalProgress = (bookingAnim.currentLeg + bookingAnim.progress) / (currentPath.size() - 1);
+    }
+
+    // Progress bar background
+    RectangleShape progressBg(Vector2f(280, 20));
+    progressBg.setFillColor(Color(50, 50, 50, 200));
+    progressBg.setPosition(35, 1050);
+    window.draw(progressBg);
+
+    // Progress bar fill
+    RectangleShape progressFill(Vector2f(280 * totalProgress, 20));
+    progressFill.setFillColor(Color(0, 255, 127, 220)); // Spring green
+    progressFill.setPosition(35, 1050);
+    window.draw(progressFill);
+
+    // Progress percentage
+    string progressStr = "Journey Progress: " + to_string(static_cast<int>(totalProgress * 100)) + "%";
+    Text progressText(progressStr, font, 14);
+    progressText.setFillColor(Color::White);
+    progressText.setPosition(35, 1025);
+    window.draw(progressText);
+
+    // Total stats
+    string stats = "Total Cost: $" + to_string(bookingAnim.totalCost) + "\n";
+    int totalHours = bookingAnim.totalTime / 60;
+    int totalMins = bookingAnim.totalTime % 60;
+    stats += "Total Time: " + to_string(totalHours) + "h " + to_string(totalMins) + "m";
+
+    Text statsText(stats, font, 13);
+    statsText.setFillColor(Color(255, 182, 193)); // Light pink
+    statsText.setPosition(180, 910);
+    window.draw(statsText);
+}
+
+#endif // MARITIME_SYSTEM_H
