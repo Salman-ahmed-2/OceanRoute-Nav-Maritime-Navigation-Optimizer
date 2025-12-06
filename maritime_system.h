@@ -35,7 +35,8 @@ struct DateTime // Date time
     {
         int daysInMonth[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
         int totalDays = day - 1;
-        for (int i = 1; i < month; i++) {
+        for (int i = 1; i < month; i++)
+        {
             totalDays += daysInMonth[i];
         }
         totalDays += (year - 2024) * 365;
@@ -60,53 +61,60 @@ struct DateTime // Date time
         return string(buffer);
     }
 };
-struct Voyage { // Voyage info
+struct Voyage
+{ // Voyage info
     int destinationPort;
     MyString company;
     int cost;
     DateTime departure;
     DateTime arrival;
-    Voyage* next;
+    Voyage *next;
     Voyage() : destinationPort(-1), cost(0), next(nullptr) {}
-    int duration() const {
+    int duration() const
+    {
         DateTime temp = departure;
         temp.addMinutes(arrival.minutesDifference(departure));
         return departure.minutesDifference(arrival);
     }
-    int getDurationMinutes() const {
+    int getDurationMinutes() const
+    {
         return duration();
     }
-    bool canConnectFrom(const DateTime& previousArrival, int maxLayoverDays) const {
-        if (previousArrival < departure) {
+    bool canConnectFrom(const DateTime &previousArrival, int maxLayoverDays) const
+    {
+        if (previousArrival < departure)
+        {
             int layoverMinutes = previousArrival.minutesDifference(departure);
             int layoverDays = (layoverMinutes + 1439) / 1440;
             return layoverDays <= maxLayoverDays;
         }
         return false;
     }
-    int getLayoverCost(const DateTime& previousArrival, int portDailyCharge) const {
+    int getLayoverCost(const DateTime &previousArrival, int portDailyCharge) const
+    {
         int layoverMinutes = previousArrival.minutesDifference(departure);
         int layoverDays = (layoverMinutes + 1439) / 1440;
         return layoverDays * portDailyCharge;
     }
 };
-struct CompanyQueue { // Company queue
+struct CompanyQueue
+{ // Company queue
     MyString companyName;
     Queue<int> shipIds;
     CompanyQueue() {}
-    CompanyQueue(const MyString& name) : companyName(name) {}
+    CompanyQueue(const MyString &name) : companyName(name) {}
 };
 class Port // Port class
 {
-    public:
+public:
     MyString name;
     Vector2f position;
     int dailyCharge;
-    Voyage *voyages; 
+    Voyage *voyages;
     bool isPreferred;
     int dockingQueueSize;
     float queuePulse;
-    LinkedList<CompanyQueue> companyQueues; 
+    LinkedList<CompanyQueue> companyQueues;
     Port() : dailyCharge(0), voyages(nullptr), isPreferred(false),
              dockingQueueSize(0), queuePulse(0.0f) {}
     Port(MyString n, Vector2f p) : name(n), position(p), dailyCharge(0),
@@ -143,16 +151,20 @@ class Port // Port class
         }
         return count;
     }
-    void addShip(int shipId, const MyString& company) {
+    void addShip(int shipId, const MyString &company)
+    {
         bool found = false;
-        for(int i=0; i<companyQueues.size(); i++) {
-            if(companyQueues.get(i).companyName == company) {
+        for (int i = 0; i < companyQueues.size(); i++)
+        {
+            if (companyQueues.get(i).companyName == company)
+            {
                 companyQueues.get(i).shipIds.enqueue(shipId);
                 found = true;
                 break;
             }
         }
-        if(!found) {
+        if (!found)
+        {
             CompanyQueue newQ(company);
             newQ.shipIds.enqueue(shipId);
             companyQueues.push_back(newQ);
@@ -162,7 +174,7 @@ class Port // Port class
 };
 class PathNode // Path node
 {
-    public:
+public:
     int port;
     long long cost;
     DateTime arrivalTime;
@@ -173,7 +185,7 @@ class PathNode // Path node
 };
 class Ship // Ship class
 {
-    public:
+public:
     int id;
     int currentPort;
     int destinationPort;
@@ -183,223 +195,233 @@ class Ship // Ship class
     bool isDocked;
     Ship() : id(0), currentPort(-1), destinationPort(-1), isDocked(false) {}
 };
-    class MaritimeSystem // Main system
-    {
-    private:
-        static const int MAX_PORTS = 100;
-        static const int MAX_SHIPS = 500;
-        Port ports[MAX_PORTS];
-        int portCount;
-        Ship ships[MAX_SHIPS];
-        int shipCount;
-        LinkedList<int> currentPath;
-        LinkedList<int> exploredEdges;
-        int startPort, endPort;
-        bool showCostPath, showTimePath;
-        bool useAStar;
-        LinkedList<LinkedList<int>*> allParetoPaths;
-        bool showAllPathsMode;
-        int hoveredPort;
-        int selectedRouteFrom, selectedRouteTo;
-        bool routeFocusMode;
-        MyString preferredCompany;
-        int maxCostPerLeg;
-        int maxLayoverDays;
-        bool inputActive;
-        MyString inputText;
-        bool isPreferenceMode;
-        Texture mapTexture;
-        Sprite mapSprite;
-        Font font;
-        Clock animationClock;
-        MyString notification;
-        float notificationTimer;
-        Clock notificationClock;
-    public:
-    private:
-        class BookingAnimation // Animation
-        {
-        public:
-            int currentLeg;
-            float progress;
-            Vector2f position;
-            bool active;
-            Clock animationClock;
-            int shipId;
-            float totalCost;
-            int totalTime;
-            BookingAnimation() : currentLeg(-1), progress(0.0f), active(false),
-                                 shipId(-1), totalCost(0), totalTime(0) {}
-            void start(int pathStartPort)
-            {
-                currentLeg = 0;
-                progress = 0.0f;
-                active = true;
-                shipId = 1000 + (rand() % 9000);
-                totalCost = 0;
-                totalTime = 0;
-                position = Vector2f(0, 0);
-                animationClock.restart();
-            }
-            void stop()
-            {
-                active = false;
-                currentLeg = -1;
-                progress = 0.0f;
-            }
-        };
-        BookingAnimation bookingAnim;
-        bool showBookingAnimation;
-        void startBookingAnimation();
-        void updateBookingAnimation(float dt);
-        void drawBookingAnimation(RenderWindow &window);
-        void drawBookingInfo(RenderWindow &window);
-    private:
-        int findCompanyIndex(const MyString& company) {
-            const char* str = company.c_str();
-            int hash = 0;
-            for (int i = 0; str[i] != '\0'; i++) {
-                hash = hash * 31 + str[i];
-            }
-            return hash;
-        }
-        void initializePortPositions()
+class MaritimeSystem // Main system
 {
-    ports[portCount++] = {MyString("Karachi"), Vector2f(1416, 490)}; // Asia
-    ports[portCount++] = {MyString("Dubai"), Vector2f(1366, 480)};
-    ports[portCount++] = {MyString("AbuDhabi"), Vector2f(1350, 485)};
-    ports[portCount++] = {MyString("Doha"), Vector2f(1330, 470)};
-    ports[portCount++] = {MyString("Jeddah"), Vector2f(1298, 500)};
-    ports[portCount++] = {MyString("Alexandria"), Vector2f(1258, 430)};
-    ports[portCount++] = {MyString("Istanbul"), Vector2f(1254, 384)};
-    ports[portCount++] = {MyString("Athens"), Vector2f(1232, 415)};
-    ports[portCount++] = {MyString("Mumbai"), Vector2f(1437, 540)};
-    ports[portCount++] = {MyString("Colombo"), Vector2f(1460, 600)};
-    ports[portCount++] = {MyString("Chittagong"), Vector2f(1500, 520)};
-    ports[portCount++] = {MyString("Singapore"), Vector2f(1567, 610)};
-    ports[portCount++] = {MyString("Jakarta"), Vector2f(1550, 650)};
-    ports[portCount++] = {MyString("HongKong"), Vector2f(1600, 500)};
-    ports[portCount++] = {MyString("Shanghai"), Vector2f(1630, 450)};
-    ports[portCount++] = {MyString("Busan"), Vector2f(1680, 400)};
-    ports[portCount++] = {MyString("Osaka"), Vector2f(1700, 410)};
-    ports[portCount++] = {MyString("Tokyo"), Vector2f(1720, 400)};
-    ports[portCount++] = {MyString("PortLouis"), Vector2f(1450, 700)}; // Africa
-    ports[portCount++] = {MyString("Durban"), Vector2f(1350, 750)};
-    ports[portCount++] = {MyString("CapeTown"), Vector2f(1250, 780)};
-    ports[portCount++] = {MyString("Lisbon"), Vector2f(1098, 407)}; // Europe
-    ports[portCount++] = {MyString("London"), Vector2f(1135, 279)};
-    ports[portCount++] = {MyString("Dublin"), Vector2f(1110, 261)};
-    ports[portCount++] = {MyString("Rotterdam"), Vector2f(1155, 275)};
-    ports[portCount++] = {MyString("Antwerp"), Vector2f(1150, 282)};
-    ports[portCount++] = {MyString("Hamburg"), Vector2f(1177, 259)};
-    ports[portCount++] = {MyString("Copenhagen"), Vector2f(1187, 238)};
-    ports[portCount++] = {MyString("Oslo"), Vector2f(1180, 195)};
-    ports[portCount++] = {MyString("Stockholm"), Vector2f(1210, 201)};
-    ports[portCount++] = {MyString("Helsinki"), Vector2f(1240, 193)};
-    ports[portCount++] = {MyString("StPetersburg"), Vector2f(1261, 195)};
-    ports[portCount++] = {MyString("Marseille"), Vector2f(1157, 361)};
-    ports[portCount++] = {MyString("NewYork"), Vector2f(833, 394)}; // America
-    ports[portCount++] = {MyString("Montreal"), Vector2f(836, 339)};
-    ports[portCount++] = {MyString("LosAngeles"), Vector2f(651, 454)};
-    ports[portCount++] = {MyString("Vancouver"), Vector2f(630, 304)};
-    ports[portCount++] = {MyString("Sydney"), Vector2f(1747, 781)}; // Oceania
-    ports[portCount++] = {MyString("Melbourne"), Vector2f(1697, 851)};
-}
-        int findPort(const char *name)
+private:
+    static const int MAX_PORTS = 100;
+    static const int MAX_SHIPS = 500;
+    Port ports[MAX_PORTS];
+    int portCount;
+    Ship ships[MAX_SHIPS];
+    int shipCount;
+    LinkedList<int> currentPath;
+    LinkedList<int> exploredEdges;
+    int startPort, endPort;
+    bool showCostPath, showTimePath;
+    bool useAStar;
+    LinkedList<LinkedList<int> *> allParetoPaths;
+    bool showAllPathsMode;
+    int hoveredPort;
+    int selectedRouteFrom, selectedRouteTo;
+    bool routeFocusMode;
+    MyString preferredCompany;
+    int maxCostPerLeg;
+    int maxLayoverDays;
+    bool inputActive;
+    MyString inputText;
+    bool isPreferenceMode;
+    Texture mapTexture;
+    Sprite mapSprite;
+    Font font;
+    Clock animationClock;
+    MyString notification;
+    float notificationTimer;
+    Clock notificationClock;
+
+public:
+private:
+    class BookingAnimation // Animation
+    {
+    public:
+        int currentLeg;
+        float progress;
+        Vector2f position;
+        bool active;
+        Clock animationClock;
+        int shipId;
+        float totalCost;
+        int totalTime;
+        BookingAnimation() : currentLeg(-1), progress(0.0f), active(false),
+                             shipId(-1), totalCost(0), totalTime(0) {}
+        void start(int pathStartPort)
         {
-            for (int i = 0; i < portCount; i++)
-            {
-                if (ports[i].name == name)
-                    return i;
-            }
-            return -1;
+            currentLeg = 0;
+            progress = 0.0f;
+            active = true;
+            shipId = 1000 + (rand() % 9000);
+            totalCost = 0;
+            totalTime = 0;
+            position = Vector2f(0, 0);
+            animationClock.restart();
         }
-        void loadPortCharges()
+        void stop()
         {
-            FILE *file = fopen("PortCharges.txt", "r");
-            if (!file)
-                return;
-            char name[64];
-            int charge;
-            char line[256];
-            while (fgets(line, sizeof(line), file))
+            active = false;
+            currentLeg = -1;
+            progress = 0.0f;
+        }
+    };
+    BookingAnimation bookingAnim;
+    bool showBookingAnimation;
+    void startBookingAnimation();
+    void updateBookingAnimation(float dt);
+    void drawBookingAnimation(RenderWindow &window);
+    void drawBookingInfo(RenderWindow &window);
+
+private:
+    int findCompanyIndex(const MyString &company)
+    {
+        const char *str = company.c_str();
+        int hash = 0;
+        for (int i = 0; str[i] != '\0'; i++)
+        {
+            hash = hash * 31 + str[i];
+        }
+        return hash;
+    }
+    void initializePortPositions()
+    {
+        ports[portCount++] = {MyString("Karachi"), Vector2f(1416, 490)}; // Asia
+        ports[portCount++] = {MyString("Dubai"), Vector2f(1366, 480)};
+        ports[portCount++] = {MyString("AbuDhabi"), Vector2f(1350, 485)};
+        ports[portCount++] = {MyString("Doha"), Vector2f(1330, 470)};
+        ports[portCount++] = {MyString("Jeddah"), Vector2f(1298, 500)};
+        ports[portCount++] = {MyString("Alexandria"), Vector2f(1258, 430)};
+        ports[portCount++] = {MyString("Istanbul"), Vector2f(1254, 384)};
+        ports[portCount++] = {MyString("Athens"), Vector2f(1232, 415)};
+        ports[portCount++] = {MyString("Mumbai"), Vector2f(1437, 540)};
+        ports[portCount++] = {MyString("Colombo"), Vector2f(1460, 600)};
+        ports[portCount++] = {MyString("Chittagong"), Vector2f(1500, 520)};
+        ports[portCount++] = {MyString("Singapore"), Vector2f(1567, 610)};
+        ports[portCount++] = {MyString("Jakarta"), Vector2f(1550, 650)};
+        ports[portCount++] = {MyString("HongKong"), Vector2f(1600, 500)};
+        ports[portCount++] = {MyString("Shanghai"), Vector2f(1630, 450)};
+        ports[portCount++] = {MyString("Busan"), Vector2f(1680, 400)};
+        ports[portCount++] = {MyString("Osaka"), Vector2f(1700, 410)};
+        ports[portCount++] = {MyString("Tokyo"), Vector2f(1720, 400)};
+        ports[portCount++] = {MyString("PortLouis"), Vector2f(1450, 700)}; // Africa
+        ports[portCount++] = {MyString("Durban"), Vector2f(1350, 750)};
+        ports[portCount++] = {MyString("CapeTown"), Vector2f(1250, 780)};
+        ports[portCount++] = {MyString("Lisbon"), Vector2f(1098, 407)}; // Europe
+        ports[portCount++] = {MyString("London"), Vector2f(1135, 279)};
+        ports[portCount++] = {MyString("Dublin"), Vector2f(1110, 261)};
+        ports[portCount++] = {MyString("Rotterdam"), Vector2f(1155, 275)};
+        ports[portCount++] = {MyString("Antwerp"), Vector2f(1150, 282)};
+        ports[portCount++] = {MyString("Hamburg"), Vector2f(1177, 259)};
+        ports[portCount++] = {MyString("Copenhagen"), Vector2f(1187, 238)};
+        ports[portCount++] = {MyString("Oslo"), Vector2f(1180, 195)};
+        ports[portCount++] = {MyString("Stockholm"), Vector2f(1210, 201)};
+        ports[portCount++] = {MyString("Helsinki"), Vector2f(1240, 193)};
+        ports[portCount++] = {MyString("StPetersburg"), Vector2f(1261, 195)};
+        ports[portCount++] = {MyString("Marseille"), Vector2f(1157, 361)};
+        ports[portCount++] = {MyString("NewYork"), Vector2f(833, 394)}; // America
+        ports[portCount++] = {MyString("Montreal"), Vector2f(836, 339)};
+        ports[portCount++] = {MyString("LosAngeles"), Vector2f(651, 454)};
+        ports[portCount++] = {MyString("Vancouver"), Vector2f(630, 304)};
+        ports[portCount++] = {MyString("Sydney"), Vector2f(1747, 781)}; // Oceania
+        ports[portCount++] = {MyString("Melbourne"), Vector2f(1697, 851)};
+    }
+    int findPort(const char *name)
+    {
+        for (int i = 0; i < portCount; i++)
+        {
+            if (ports[i].name == name)
+                return i;
+        }
+        return -1;
+    }
+    void loadPortCharges()
+    {
+        FILE *file = fopen("PortCharges.txt", "r");
+        if (!file)
+            return;
+        char name[64];
+        int charge;
+        char line[256];
+        while (fgets(line, sizeof(line), file))
+        {
+            if (line[0] == '#' || line[0] == '\n' || line[0] == '\0')
+                continue;
+            if (sscanf(line, "%s %d", name, &charge) == 2)
             {
-                if (line[0] == '#' || line[0] == '\n' || line[0] == '\0') continue;
-                if (sscanf(line, "%s %d", name, &charge) == 2)
+                int idx = findPort(name);
+                if (idx != -1)
                 {
-                    int idx = findPort(name);
-                    if (idx != -1)
-                    {
-                        ports[idx].dailyCharge = charge;
-                    }
+                    ports[idx].dailyCharge = charge;
                 }
             }
-            fclose(file);
         }
-        void loadRoutes()
-        { // Load routes
-            FILE *file = fopen("Routes.txt", "r");
-            if (!file)
-            {
-                notification = MyString("ERROR: Cannot open Routes.txt");
-                notificationTimer = 5.0f;
-                notificationClock.restart();
-                return;
-            }
-            char line[256];
-            int routeCount = 0;
-            while (fgets(line, sizeof(line), file))
-            {
-                if (line[0] == '\n' || line[0] == '\0' || line[0] == '#')
-                    continue;
-                char from[64], to[64], date[16], dep[16], arr[16], company[64];
-                int cost;
-                int d, m, y, h1, m1, h2, m2;
-                if (sscanf(line, "%s %s %d/%d/%d %d:%d %d:%d %d %s",
-                           from, to, &y, &m, &d, &h1, &m1, &h2, &m2, &cost, company) == 11)
-                {
-                    int src = findPort(from);
-                    int dst = findPort(to);
-                    if (src != -1 && dst != -1)
-                    {
-                        DateTime departure(d, m, y, h1, m1);
-                        DateTime arrival(d, m, y, h2, m2);
-                        if (h2 < h1 || (h2 == h1 && m2 < m1))
-                        {
-                            arrival.day++;
-                        }
-                        ports[src].addVoyage(dst, MyString(company), cost, departure, arrival);
-                        routeCount++;
-                    }
-                }
-            }
-            fclose(file);
-            char buffer[128];
-            sprintf(buffer, "Loaded %d routes from %d ports", routeCount, portCount);
-            notification = MyString(buffer);
-            notificationTimer = 3.0f;
+        fclose(file);
+    }
+    void loadRoutes()
+    { // Load routes
+        FILE *file = fopen("Routes.txt", "r");
+        if (!file)
+        {
+            notification = MyString("ERROR: Cannot open Routes.txt");
+            notificationTimer = 5.0f;
             notificationClock.restart();
-            cout << buffer << endl;
+            return;
         }
-    void reconstructIndirectPath(int prev[], int companyIndex[], DateTime arrivalTimes[], bool byCost) {
+        char line[256];
+        int routeCount = 0;
+        while (fgets(line, sizeof(line), file))
+        {
+            if (line[0] == '\n' || line[0] == '\0' || line[0] == '#')
+                continue;
+            char from[64], to[64], date[16], dep[16], arr[16], company[64];
+            int cost;
+            int d, m, y, h1, m1, h2, m2;
+            if (sscanf(line, "%s %s %d/%d/%d %d:%d %d:%d %d %s",
+                       from, to, &y, &m, &d, &h1, &m1, &h2, &m2, &cost, company) == 11)
+            {
+                int src = findPort(from);
+                int dst = findPort(to);
+                if (src != -1 && dst != -1)
+                {
+                    DateTime departure(d, m, y, h1, m1);
+                    DateTime arrival(d, m, y, h2, m2);
+                    if (h2 < h1 || (h2 == h1 && m2 < m1))
+                    {
+                        arrival.day++;
+                    }
+                    ports[src].addVoyage(dst, MyString(company), cost, departure, arrival);
+                    routeCount++;
+                }
+            }
+        }
+        fclose(file);
+        char buffer[128];
+        sprintf(buffer, "Loaded %d routes from %d ports", routeCount, portCount);
+        notification = MyString(buffer);
+        notificationTimer = 3.0f;
+        notificationClock.restart();
+        cout << buffer << endl;
+    }
+    void reconstructIndirectPath(int prev[], int companyIndex[], DateTime arrivalTimes[], bool byCost)
+    {
         currentPath.clear();
-        if (prev[endPort] == -1) {
+        if (prev[endPort] == -1)
+        {
             notification = MyString("No path found! Try different ports or relax filters.");
             notificationTimer = 3.0f;
             notificationClock.restart();
             return;
         }
         Stack<int> pathStack;
-        for (int at = endPort; at != -1; at = prev[at]) {
+        for (int at = endPort; at != -1; at = prev[at])
+        {
             pathStack.push(at);
         }
-        if (pathStack.empty() || pathStack.top() != startPort) {
+        if (pathStack.empty() || pathStack.top() != startPort)
+        {
             notification = MyString("Path reconstruction failed!");
             notificationTimer = 2.0f;
             notificationClock.restart();
             return;
         }
-        while (!pathStack.empty()) {
+        while (!pathStack.empty())
+        {
             currentPath.push_back(pathStack.top());
             pathStack.pop();
         }
@@ -408,43 +430,55 @@ class Ship // Ship class
         int voyageCount = 0;
         int layoverCount = 0;
         vector<string> pathDetails;
-        for (int i = 0; i < currentPath.size() - 1; i++) {
+        for (int i = 0; i < currentPath.size() - 1; i++)
+        {
             int from = currentPath.get(i);
-            int to = currentPath.get(i+1);
-            Voyage* takenVoyage = nullptr;
-            Voyage* v = ports[from].voyages;
-            while (v) {
-                if (v->destinationPort == to) {
-                    if (v->arrival.toString() == arrivalTimes[to].toString()) {
+            int to = currentPath.get(i + 1);
+            Voyage *takenVoyage = nullptr;
+            Voyage *v = ports[from].voyages;
+            while (v)
+            {
+                if (v->destinationPort == to)
+                {
+                    if (v->arrival.toString() == arrivalTimes[to].toString())
+                    {
                         takenVoyage = v;
                         break;
                     }
                 }
                 v = v->next;
             }
-            if (takenVoyage) {
+            if (takenVoyage)
+            {
                 voyageCount++;
                 totalCost += takenVoyage->cost;
                 totalTime += takenVoyage->getDurationMinutes();
-                if (i > 0) {
-                    int prevPort = currentPath.get(i-1);
-                    Voyage* prevVoyage = nullptr;
-                    Voyage* pv = ports[prevPort].voyages;
-                    while (pv) {
-                        if (pv->destinationPort == from) {
-                            if (pv->arrival.toString() == arrivalTimes[from].toString()) {
+                if (i > 0)
+                {
+                    int prevPort = currentPath.get(i - 1);
+                    Voyage *prevVoyage = nullptr;
+                    Voyage *pv = ports[prevPort].voyages;
+                    while (pv)
+                    {
+                        if (pv->destinationPort == from)
+                        {
+                            if (pv->arrival.toString() == arrivalTimes[from].toString())
+                            {
                                 prevVoyage = pv;
                                 break;
                             }
                         }
                         pv = pv->next;
                     }
-                    if (prevVoyage) {
+                    if (prevVoyage)
+                    {
                         int layoverMinutes = takenVoyage->departure.minutesDifference(prevVoyage->arrival);
-                        if (layoverMinutes > 0) {
+                        if (layoverMinutes > 0)
+                        {
                             layoverCount++;
                             totalTime += layoverMinutes;
-                            if (byCost) {
+                            if (byCost)
+                            {
                                 int layoverDays = (layoverMinutes + 1439) / 1440;
                                 totalCost += layoverDays * ports[from].dailyCharge;
                             }
@@ -471,10 +505,10 @@ class Ship // Ship class
         }
         char summaryBuf[512];
         sprintf(summaryBuf, "%s PATH FOUND!\n"
-                           "Route: %s → %s\n"
-                           "Segments: %d voyages, %d layovers\n"
-                           "Total Cost: $%d\n"
-                           "Total Time: %dh %dm",
+                            "Route: %s → %s\n"
+                            "Segments: %d voyages, %d layovers\n"
+                            "Total Cost: $%d\n"
+                            "Total Time: %dh %dm",
                 byCost ? "CHEAPEST" : "FASTEST",
                 ports[startPort].name.c_str(),
                 ports[endPort].name.c_str(),
@@ -489,13 +523,17 @@ class Ship // Ship class
         cout << "\n=== INDIRECT PATH DETAILS ===" << endl;
         cout << summaryBuf << endl;
         cout << "Detailed itinerary:" << endl;
-        for (const string& detail : pathDetails) {
+        for (const string &detail : pathDetails)
+        {
             cout << detail << endl;
         }
-        cout << "============================\n" << endl;
+        cout << "============================\n"
+             << endl;
     }
-    void findAllPaths() {
-        if (startPort == -1 || endPort == -1) {
+    void findAllPaths()
+    {
+        if (startPort == -1 || endPort == -1)
+        {
             notification = MyString("Please select both start and end ports!");
             notificationTimer = 2.0f;
             notificationClock.restart();
@@ -505,65 +543,85 @@ class Ship // Ship class
         cout << "From: " << ports[startPort].name.c_str() << " To: " << ports[endPort].name.c_str() << endl;
         exploredEdges.clear();
         currentPath.clear();
-        while(!allParetoPaths.empty()) {
+        while (!allParetoPaths.empty())
+        {
             delete allParetoPaths.get(0);
             allParetoPaths.remove(0);
         }
         showAllPathsMode = true;
         showCostPath = false;
         showTimePath = false;
-        struct SearchNode {
+        struct SearchNode
+        {
             int port;
             long long cost;
             DateTime arrival;
-            SearchNode* parent;
-            Voyage* voyageFromParent; 
-            SearchNode(int p, long long c, DateTime a, SearchNode* par, Voyage* v) 
+            SearchNode *parent;
+            Voyage *voyageFromParent;
+            SearchNode(int p, long long c, DateTime a, SearchNode *par, Voyage *v)
                 : port(p), cost(c), arrival(a), parent(par), voyageFromParent(v) {}
         };
-        LinkedList<SearchNode*> allNodes; 
-        LinkedList<SearchNode*> visitedStates[MAX_PORTS]; 
-        PriorityQueue<SearchNode*> pq;
-        LinkedList<SearchNode*> solutions; 
+        LinkedList<SearchNode *> allNodes;
+        LinkedList<SearchNode *> visitedStates[MAX_PORTS];
+        PriorityQueue<SearchNode *> pq;
+        LinkedList<SearchNode *> solutions;
         DateTime startTime(1, 12, 2024, 0, 0);
-        SearchNode* startNode = new SearchNode(startPort, 0, startTime, nullptr, nullptr);
+        SearchNode *startNode = new SearchNode(startPort, 0, startTime, nullptr, nullptr);
         allNodes.push_back(startNode);
         visitedStates[startPort].push_back(startNode);
         pq.push(startNode, 0);
         int nodesExplored = 0;
-        while (!pq.empty()) {
-            SearchNode* current = pq.pop();
+        while (!pq.empty())
+        {
+            SearchNode *current = pq.pop();
             int u = current->port;
-            if (u == endPort) {
+            if (u == endPort)
+            {
                 solutions.push_back(current);
-                continue; 
+                continue;
             }
             nodesExplored++;
-            Voyage* v = ports[u].voyages;
-            while (v) {
+            Voyage *v = ports[u].voyages;
+            while (v)
+            {
                 int dest = v->destinationPort;
-                if (!preferredCompany.empty() && !(v->company == preferredCompany)) { v = v->next; continue; }
-                if (v->cost > maxCostPerLeg) { v = v->next; continue; }
-                if (!v->canConnectFrom(current->arrival, maxLayoverDays)) { v = v->next; continue; }
+                if (!preferredCompany.empty() && !(v->company == preferredCompany))
+                {
+                    v = v->next;
+                    continue;
+                }
+                if (v->cost > maxCostPerLeg)
+                {
+                    v = v->next;
+                    continue;
+                }
+                if (!v->canConnectFrom(current->arrival, maxLayoverDays))
+                {
+                    v = v->next;
+                    continue;
+                }
                 int layoverCost = v->getLayoverCost(current->arrival, ports[u].dailyCharge);
                 long long legCost = v->cost + layoverCost;
                 long long newTotalCost = current->cost + legCost;
                 DateTime newArrival = v->arrival;
                 bool dominated = false;
-                LinkedList<SearchNode*>::Iterator it = visitedStates[dest].begin();
-                while (it != visitedStates[dest].end()) {
-                    SearchNode* existing = *it;
-                    if (existing->cost <= newTotalCost && existing->arrival <= newArrival) {
+                LinkedList<SearchNode *>::Iterator it = visitedStates[dest].begin();
+                while (it != visitedStates[dest].end())
+                {
+                    SearchNode *existing = *it;
+                    if (existing->cost <= newTotalCost && existing->arrival <= newArrival)
+                    {
                         dominated = true;
                         break;
                     }
                     ++it;
                 }
-                if (!dominated) {
-                    SearchNode* newNode = new SearchNode(dest, newTotalCost, newArrival, current, v);
+                if (!dominated)
+                {
+                    SearchNode *newNode = new SearchNode(dest, newTotalCost, newArrival, current, v);
                     allNodes.push_back(newNode);
                     visitedStates[dest].push_back(newNode);
-                    pq.push(newNode, (int)newTotalCost); 
+                    pq.push(newNode, (int)newTotalCost);
                     exploredEdges.push_back(u);
                     exploredEdges.push_back(dest);
                 }
@@ -576,36 +634,43 @@ class Ship // Ship class
         notificationTimer = 4.0f;
         notificationClock.restart();
         cout << "Found " << solutions.size() << " Pareto-optimal paths:" << endl;
-        LinkedList<SearchNode*>::Iterator it = solutions.begin();
+        LinkedList<SearchNode *>::Iterator it = solutions.begin();
         int pathIdx = 1;
-        while(it != solutions.end()) {
-            SearchNode* sol = *it;
+        while (it != solutions.end())
+        {
+            SearchNode *sol = *it;
             int duration = startTime.minutesDifference(sol->arrival);
-            cout << "\n[Path " << pathIdx++ << "] Cost: $" << sol->cost 
-                 << ", Time: " << duration/60 << "h " << duration%60 << "m"
+            cout << "\n[Path " << pathIdx++ << "] Cost: $" << sol->cost
+                 << ", Time: " << duration / 60 << "h " << duration % 60 << "m"
                  << ", Arrival: " << sol->arrival.toString().c_str() << endl;
             Stack<int> pathStack;
-            SearchNode* curr = sol;
-            while (curr) {
+            SearchNode *curr = sol;
+            while (curr)
+            {
                 pathStack.push(curr->port);
                 curr = curr->parent;
             }
-            LinkedList<int>* newPath = new LinkedList<int>();
-            while (!pathStack.empty()) {
+            LinkedList<int> *newPath = new LinkedList<int>();
+            while (!pathStack.empty())
+            {
                 int p = pathStack.top();
                 cout << ports[p].name.c_str();
                 newPath->push_back(p);
                 pathStack.pop();
-                if (!pathStack.empty()) cout << " -> ";
+                if (!pathStack.empty())
+                    cout << " -> ";
             }
             cout << endl;
             allParetoPaths.push_back(newPath);
             ++it;
         }
-        cout << "==============================================\n" << endl;
+        cout << "==============================================\n"
+             << endl;
     }
-    void dijkstra(bool byCost) { // Dijkstra algo
-        if (startPort == -1 || endPort == -1) {
+    void dijkstra(bool byCost)
+    { // Dijkstra algo
+        if (startPort == -1 || endPort == -1)
+        {
             notification = MyString("Please select both start and end ports!");
             notificationTimer = 2.0f;
             notificationClock.restart();
@@ -613,25 +678,26 @@ class Ship // Ship class
         }
         exploredEdges.clear();
         currentPath.clear();
-        struct SearchNode {
+        struct SearchNode
+        {
             int port;
             long long cost;
             DateTime arrival;
-            SearchNode* parent;
-            Voyage* voyageFromParent; 
-            SearchNode(int p, long long c, DateTime a, SearchNode* par, Voyage* v) 
+            SearchNode *parent;
+            Voyage *voyageFromParent;
+            SearchNode(int p, long long c, DateTime a, SearchNode *par, Voyage *v)
                 : port(p), cost(c), arrival(a), parent(par), voyageFromParent(v) {}
         };
-        LinkedList<SearchNode*> allNodes;
-        LinkedList<SearchNode*> visitedStates[MAX_PORTS];   
-        PriorityQueue<SearchNode*> pq;
+        LinkedList<SearchNode *> allNodes;
+        LinkedList<SearchNode *> visitedStates[MAX_PORTS];
+        PriorityQueue<SearchNode *> pq;
         DateTime startTime(1, 12, 2024, 0, 0);
-        SearchNode* startNode = new SearchNode(startPort, 0, startTime, nullptr, nullptr);
+        SearchNode *startNode = new SearchNode(startPort, 0, startTime, nullptr, nullptr);
         allNodes.push_back(startNode);
         visitedStates[startPort].push_back(startNode);
         pq.push(startNode, 0);
         char buffer[128];
-        sprintf(buffer, "%s finding %s path...", 
+        sprintf(buffer, "%s finding %s path...",
                 useAStar ? "A*" : "Dijkstra",
                 byCost ? "cheapest" : "fastest");
         notification = MyString(buffer);
@@ -639,11 +705,13 @@ class Ship // Ship class
         notificationClock.restart();
         int nodesExplored = 0;
         int connectionsFound = 0;
-        SearchNode* finalNode = nullptr;
-        while (!pq.empty()) {
-            SearchNode* current = pq.pop();
+        SearchNode *finalNode = nullptr;
+        while (!pq.empty())
+        {
+            SearchNode *current = pq.pop();
             int u = current->port;
-            if (u == endPort) {
+            if (u == endPort)
+            {
                 finalNode = current;
                 sprintf(buffer, "Path found! Explored %d nodes, %d connections",
                         nodesExplored, connectionsFound);
@@ -653,46 +721,56 @@ class Ship // Ship class
                 break;
             }
             nodesExplored++;
-            Voyage* v = ports[u].voyages;
-            while (v) {
+            Voyage *v = ports[u].voyages;
+            while (v)
+            {
                 int dest = v->destinationPort;
-                if (!preferredCompany.empty() && !(v->company == preferredCompany)) {
+                if (!preferredCompany.empty() && !(v->company == preferredCompany))
+                {
                     v = v->next;
                     continue;
                 }
-                if (v->cost > maxCostPerLeg) {
+                if (v->cost > maxCostPerLeg)
+                {
                     v = v->next;
                     continue;
                 }
-                if (!v->canConnectFrom(current->arrival, maxLayoverDays)) {
+                if (!v->canConnectFrom(current->arrival, maxLayoverDays))
+                {
                     v = v->next;
                     continue;
                 }
                 long long legCost = 0;
-                if (byCost) {
+                if (byCost)
+                {
                     int layoverCost = v->getLayoverCost(current->arrival, ports[u].dailyCharge);
                     legCost = v->cost + layoverCost;
-                } else {
+                }
+                else
+                {
                     int layoverMinutes = current->arrival.minutesDifference(v->departure);
                     legCost = v->getDurationMinutes() + layoverMinutes;
                 }
                 long long newTotalCost = current->cost + legCost;
                 DateTime newArrival = v->arrival;
                 bool dominated = false;
-                LinkedList<SearchNode*>::Iterator it = visitedStates[dest].begin();
-                while (it != visitedStates[dest].end()) {
-                    SearchNode* existing = *it;
-                    if (existing->cost <= newTotalCost && existing->arrival <= newArrival) {
+                LinkedList<SearchNode *>::Iterator it = visitedStates[dest].begin();
+                while (it != visitedStates[dest].end())
+                {
+                    SearchNode *existing = *it;
+                    if (existing->cost <= newTotalCost && existing->arrival <= newArrival)
+                    {
                         dominated = true;
                         break;
                     }
                     ++it;
                 }
-                if (!dominated) {
-                    SearchNode* newNode = new SearchNode(dest, newTotalCost, newArrival, current, v);
+                if (!dominated)
+                {
+                    SearchNode *newNode = new SearchNode(dest, newTotalCost, newArrival, current, v);
                     allNodes.push_back(newNode);
                     visitedStates[dest].push_back(newNode);
-                    pq.push(newNode, (int)newTotalCost); 
+                    pq.push(newNode, (int)newTotalCost);
                     exploredEdges.push_back(u);
                     exploredEdges.push_back(dest);
                     connectionsFound++;
@@ -700,35 +778,42 @@ class Ship // Ship class
                 v = v->next;
             }
         }
-        if (finalNode) {
+        if (finalNode)
+        {
             Stack<int> pathStack;
-            SearchNode* curr = finalNode;
+            SearchNode *curr = finalNode;
             vector<string> pathDetails;
             int totalCost = 0;
             int totalTime = 0;
             int voyageCount = 0;
             int layoverCount = 0;
-            while (curr) {
+            while (curr)
+            {
                 pathStack.push(curr->port);
                 curr = curr->parent;
             }
-            while (!pathStack.empty()) {
+            while (!pathStack.empty())
+            {
                 currentPath.push_back(pathStack.top());
                 pathStack.pop();
             }
             curr = finalNode;
-            while (curr && curr->parent) {
-                Voyage* v = curr->voyageFromParent;
-                SearchNode* parent = curr->parent;
-                if (v) {
+            while (curr && curr->parent)
+            {
+                Voyage *v = curr->voyageFromParent;
+                SearchNode *parent = curr->parent;
+                if (v)
+                {
                     voyageCount++;
                     totalCost += v->cost;
                     totalTime += v->getDurationMinutes();
                     int layoverMinutes = parent->arrival.minutesDifference(v->departure);
-                    if (layoverMinutes > 0) {
+                    if (layoverMinutes > 0)
+                    {
                         layoverCount++;
                         totalTime += layoverMinutes;
-                        if (byCost) {
+                        if (byCost)
+                        {
                             int layoverDays = (layoverMinutes + 1439) / 1440;
                             totalCost += layoverDays * ports[parent->port].dailyCharge;
                         }
@@ -755,10 +840,10 @@ class Ship // Ship class
             reverse(pathDetails.begin(), pathDetails.end());
             char summaryBuf[512];
             sprintf(summaryBuf, "%s PATH FOUND!\n"
-                               "Route: %s → %s\n"
-                               "Segments: %d voyages, %d layovers\n"
-                               "Total Cost: $%d\n"
-                               "Total Time: %dh %dm",
+                                "Route: %s → %s\n"
+                                "Segments: %d voyages, %d layovers\n"
+                                "Total Cost: $%d\n"
+                                "Total Time: %dh %dm",
                     byCost ? "CHEAPEST" : "FASTEST",
                     ports[startPort].name.c_str(),
                     ports[endPort].name.c_str(),
@@ -773,189 +858,224 @@ class Ship // Ship class
             cout << "\n=== INDIRECT PATH DETAILS ===" << endl;
             cout << summaryBuf << endl;
             cout << "Detailed itinerary:" << endl;
-            for (const string& detail : pathDetails) {
+            for (const string &detail : pathDetails)
+            {
                 cout << detail << endl;
             }
-            cout << "============================\n" << endl;
-            if (byCost) {
+            cout << "============================\n"
+                 << endl;
+            if (byCost)
+            {
                 showCostPath = true;
                 showTimePath = false;
-            } else {
+            }
+            else
+            {
                 showTimePath = true;
                 showCostPath = false;
             }
-        } else {
+        }
+        else
+        {
             notification = MyString("No route found!");
             notificationTimer = 3.0f;
             notificationClock.restart();
         }
-        for (int i = 0; i < allNodes.size(); i++) {
+        for (int i = 0; i < allNodes.size(); i++)
+        {
             delete allNodes.get(i);
         }
     }
-   void astar(bool byCost) { // A* algo
-    if (startPort == -1 || endPort == -1) {
-        notification = MyString("Please select both start and end ports!");
-        notificationTimer = 2.0f;
-        notificationClock.restart();
-        return;
-    }
-    long long gScore[MAX_PORTS];
-    long long fScore[MAX_PORTS];
-    DateTime arrival[MAX_PORTS];
-    int prev[MAX_PORTS];
-    bool visited[MAX_PORTS] = {false};
-    for (int i = 0; i < portCount; i++) {
-        gScore[i] = fScore[i] = LLONG_MAX;
-        prev[i] = -1;
-    }
-    gScore[startPort] = 0;
-    fScore[startPort] = heuristic(startPort, endPort, byCost);
-    arrival[startPort] = DateTime(1, 12, 2024, 0, 0);
-    PriorityQueue<int> pq;
-    pq.push(startPort, fScore[startPort]);
-    exploredEdges.clear();
-    currentPath.clear();
-    char algorithmMsg[128];
-    sprintf(algorithmMsg, "A* algorithm running for %s path...", 
-            byCost ? "cheapest" : "fastest");
-    notification = MyString(algorithmMsg);
-    notificationTimer = 1.0f;
-    notificationClock.restart();
-    int nodesExplored = 0;
-    while (!pq.empty()) {
-        int u = pq.pop();
-        nodesExplored++;
-        if (u == endPort) {
-            char foundMsg[128];
-            sprintf(foundMsg, "A* path found! Explored %d nodes", nodesExplored);
-            notification = MyString(foundMsg);
+    void astar(bool byCost)
+    { // A* algo
+        if (startPort == -1 || endPort == -1)
+        {
+            notification = MyString("Please select both start and end ports!");
             notificationTimer = 2.0f;
             notificationClock.restart();
-            break;
+            return;
         }
-        if (visited[u]) continue;
-        visited[u] = true;
-        Voyage* v = ports[u].voyages;
-        while (v) {
-            if (!preferredCompany.empty() && !(v->company == preferredCompany)) {
-                v = v->next;
+        long long gScore[MAX_PORTS];
+        long long fScore[MAX_PORTS];
+        DateTime arrival[MAX_PORTS];
+        int prev[MAX_PORTS];
+        bool visited[MAX_PORTS] = {false};
+        for (int i = 0; i < portCount; i++)
+        {
+            gScore[i] = fScore[i] = LLONG_MAX;
+            prev[i] = -1;
+        }
+        gScore[startPort] = 0;
+        fScore[startPort] = heuristic(startPort, endPort, byCost);
+        arrival[startPort] = DateTime(1, 12, 2024, 0, 0);
+        PriorityQueue<int> pq;
+        pq.push(startPort, fScore[startPort]);
+        exploredEdges.clear();
+        currentPath.clear();
+        char algorithmMsg[128];
+        sprintf(algorithmMsg, "A* algorithm running for %s path...",
+                byCost ? "cheapest" : "fastest");
+        notification = MyString(algorithmMsg);
+        notificationTimer = 1.0f;
+        notificationClock.restart();
+        int nodesExplored = 0;
+        while (!pq.empty())
+        {
+            int u = pq.pop();
+            nodesExplored++;
+            if (u == endPort)
+            {
+                char foundMsg[128];
+                sprintf(foundMsg, "A* path found! Explored %d nodes", nodesExplored);
+                notification = MyString(foundMsg);
+                notificationTimer = 2.0f;
+                notificationClock.restart();
+                break;
+            }
+            if (visited[u])
                 continue;
-            }
-            if (v->cost > maxCostPerLeg) {
+            visited[u] = true;
+            Voyage *v = ports[u].voyages;
+            while (v)
+            {
+                if (!preferredCompany.empty() && !(v->company == preferredCompany))
+                {
+                    v = v->next;
+                    continue;
+                }
+                if (v->cost > maxCostPerLeg)
+                {
+                    v = v->next;
+                    continue;
+                }
+                int layoverMinutes = arrival[u].minutesDifference(v->departure);
+                if (layoverMinutes < 0)
+                {
+                    v = v->next;
+                    continue;
+                }
+                int layoverDays = (layoverMinutes + 1439) / 1440;
+                if (layoverDays > maxLayoverDays)
+                {
+                    v = v->next;
+                    continue;
+                }
+                long long layoverCost = layoverDays * ports[u].dailyCharge;
+                long long voyageCost = byCost ? (v->cost + layoverCost) : v->getDurationMinutes();
+                long long tentativeGScore = gScore[u] + voyageCost;
+                if (tentativeGScore < gScore[v->destinationPort])
+                {
+                    prev[v->destinationPort] = u;
+                    gScore[v->destinationPort] = tentativeGScore;
+                    fScore[v->destinationPort] = tentativeGScore + heuristic(v->destinationPort, endPort, byCost);
+                    arrival[v->destinationPort] = v->arrival;
+                    pq.push(v->destinationPort, fScore[v->destinationPort]);
+                    exploredEdges.push_back(u);
+                    exploredEdges.push_back(v->destinationPort);
+                }
                 v = v->next;
-                continue;
             }
-            int layoverMinutes = arrival[u].minutesDifference(v->departure);
-            if (layoverMinutes < 0) {
-                v = v->next;
-                continue;
-            }
-            int layoverDays = (layoverMinutes + 1439) / 1440;
-            if (layoverDays > maxLayoverDays) {
-                v = v->next;
-                continue;
-            }
-            long long layoverCost = layoverDays * ports[u].dailyCharge;
-            long long voyageCost = byCost ? (v->cost + layoverCost) : v->getDurationMinutes();
-            long long tentativeGScore = gScore[u] + voyageCost;
-            if (tentativeGScore < gScore[v->destinationPort]) {
-                prev[v->destinationPort] = u;
-                gScore[v->destinationPort] = tentativeGScore;
-                fScore[v->destinationPort] = tentativeGScore + heuristic(v->destinationPort, endPort, byCost);
-                arrival[v->destinationPort] = v->arrival;
-                pq.push(v->destinationPort, fScore[v->destinationPort]);
-                exploredEdges.push_back(u);
-                exploredEdges.push_back(v->destinationPort);
-            }
-            v = v->next;
+        }
+        reconstructPath(prev);
+        if (byCost)
+        {
+            showCostPath = true;
+            showTimePath = false;
+        }
+        else
+        {
+            showTimePath = true;
+            showCostPath = false;
         }
     }
-    reconstructPath(prev);
-    if (byCost) {
-        showCostPath = true;
-        showTimePath = false;
-    } else {
-        showTimePath = true;
-        showCostPath = false;
-    }
-}
     long long heuristic(int from, int to, bool byCost)
     {
         float dist = sqrt(pow(ports[to].position.x - ports[from].position.x, 2) +
                           pow(ports[to].position.y - ports[from].position.y, 2));
         if (byCost)
         {
-            return dist * 5; 
+            return dist * 5;
         }
         else
         {
-            return dist * 0.5; 
+            return dist * 0.5;
         }
     }
-    void reconstructPath(int prev[]) {
-    currentPath.clear();
-    if (prev[endPort] == -1) {
-        notification = MyString("No path found between selected ports!");
-        notificationTimer = 3.0f;
-        notificationClock.restart();
-        showCostPath = false;
-        showTimePath = false;
-        return;
-    }
-    Stack<int> pathStack;
-    for (int at = endPort; at != -1; at = prev[at]) {
-        pathStack.push(at);
-    }
-    if (pathStack.empty() || pathStack.top() != startPort) {
-        notification = MyString("Invalid path reconstruction!");
-        notificationTimer = 2.0f;
-        notificationClock.restart();
-        return;
-    }
-    while (!pathStack.empty()) {
-        currentPath.push_back(pathStack.top());
-        pathStack.pop();
-    }
-    if (currentPath.size() < 2) {
-        notification = MyString("Path too short!");
-        notificationTimer = 2.0f;
-        notificationClock.restart();
-        return;
-    }
-    int totalCost = 0;
-    int totalTime = 0;
-    int segments = currentPath.size() - 1;
-    for (int i = 0; i < segments; i++) {
-        int from = currentPath.get(i);
-        int to = currentPath.get(i+1);
-        Voyage* v = ports[from].voyages;
-        while (v) {
-            if (v->destinationPort == to) {
-                totalCost += v->cost;
-                totalTime += v->getDurationMinutes();
-                break;
+    void reconstructPath(int prev[])
+    {
+        currentPath.clear();
+        if (prev[endPort] == -1)
+        {
+            notification = MyString("No path found between selected ports!");
+            notificationTimer = 3.0f;
+            notificationClock.restart();
+            showCostPath = false;
+            showTimePath = false;
+            return;
+        }
+        Stack<int> pathStack;
+        for (int at = endPort; at != -1; at = prev[at])
+        {
+            pathStack.push(at);
+        }
+        if (pathStack.empty() || pathStack.top() != startPort)
+        {
+            notification = MyString("Invalid path reconstruction!");
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+            return;
+        }
+        while (!pathStack.empty())
+        {
+            currentPath.push_back(pathStack.top());
+            pathStack.pop();
+        }
+        if (currentPath.size() < 2)
+        {
+            notification = MyString("Path too short!");
+            notificationTimer = 2.0f;
+            notificationClock.restart();
+            return;
+        }
+        int totalCost = 0;
+        int totalTime = 0;
+        int segments = currentPath.size() - 1;
+        for (int i = 0; i < segments; i++)
+        {
+            int from = currentPath.get(i);
+            int to = currentPath.get(i + 1);
+            Voyage *v = ports[from].voyages;
+            while (v)
+            {
+                if (v->destinationPort == to)
+                {
+                    totalCost += v->cost;
+                    totalTime += v->getDurationMinutes();
+                    break;
+                }
+                v = v->next;
             }
-            v = v->next;
         }
+        char buffer[256];
+        sprintf(buffer, "Path found: %d segments\nTotal Cost: $%d\nTotal Time: %dh %dm",
+                segments, totalCost, totalTime / 60, totalTime % 60);
+        notification = MyString(buffer);
+        notificationTimer = 4.0f;
+        notificationClock.restart();
+        cout << "\n=== PATH FOUND ===" << endl;
+        cout << "Path: ";
+        for (int i = 0; i < currentPath.size(); i++)
+        {
+            cout << ports[currentPath.get(i)].name.c_str();
+            if (i < currentPath.size() - 1)
+                cout << " → ";
+        }
+        cout << "\nSegments: " << segments << endl;
+        cout << "Total Cost: $" << totalCost << endl;
+        cout << "Total Time: " << totalTime / 60 << "h " << totalTime % 60 << "m" << endl;
+        cout << "=================\n"
+             << endl;
     }
-    char buffer[256];
-    sprintf(buffer, "Path found: %d segments\nTotal Cost: $%d\nTotal Time: %dh %dm", 
-            segments, totalCost, totalTime/60, totalTime%60);
-    notification = MyString(buffer);
-    notificationTimer = 4.0f;
-    notificationClock.restart();
-    cout << "\n=== PATH FOUND ===" << endl;
-    cout << "Path: ";
-    for (int i = 0; i < currentPath.size(); i++) {
-        cout << ports[currentPath.get(i)].name.c_str();
-        if (i < currentPath.size() - 1) cout << " → ";
-    }
-    cout << "\nSegments: " << segments << endl;
-    cout << "Total Cost: $" << totalCost << endl;
-    cout << "Total Time: " << totalTime/60 << "h " << totalTime%60 << "m" << endl;
-    cout << "=================\n" << endl;
-}
     void drawPortGeometry(RenderWindow &window, int idx)
     {
         const Port &port = ports[idx];
@@ -1130,25 +1250,30 @@ class Ship // Ship class
             window.draw(infoText);
         }
     }
-    void drawPathLine(RenderWindow& window) {
-        if (currentPath.size() < 2) return;
-        if (!showCostPath && !showTimePath) return;
+    void drawPathLine(RenderWindow &window)
+    {
+        if (currentPath.size() < 2)
+            return;
+        if (!showCostPath && !showTimePath)
+            return;
         Color pathColor = showCostPath ? Color::Yellow : Color::Green;
         float pulse = 0.6f + 0.4f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f);
         pathColor.a = static_cast<Uint8>(180 + 75 * pulse);
-        for (int i = 0; i < currentPath.size() - 1; i++) {
+        for (int i = 0; i < currentPath.size() - 1; i++)
+        {
             int from = currentPath.get(i);
-            int to = currentPath.get(i+1);
+            int to = currentPath.get(i + 1);
             Vector2f start = ports[from].position;
             Vector2f end = ports[to].position;
             Vertex line[] = {
                 Vertex(start, pathColor),
-                Vertex(end, pathColor)
-            };
+                Vertex(end, pathColor)};
             bool isDirect = false;
-            Voyage* v = ports[from].voyages;
-            while (v) {
-                if (v->destinationPort == to) {
+            Voyage *v = ports[from].voyages;
+            while (v)
+            {
+                if (v->destinationPort == to)
+                {
                     isDirect = true;
                     break;
                 }
@@ -1156,51 +1281,60 @@ class Ship // Ship class
             }
             Vector2f direction = end - start;
             float length = sqrt(direction.x * direction.x + direction.y * direction.y);
-            if (length > 0) direction /= length;
-            if (isDirect) {
+            if (length > 0)
+                direction /= length;
+            if (isDirect)
+            {
                 window.draw(line, 2, Lines);
-            } else {
+            }
+            else
+            {
                 float dashLength = 15.0f;
                 float gapLength = 8.0f;
                 float traveled = 0.0f;
-                while (traveled < length) {
+                while (traveled < length)
+                {
                     float segLength = min(dashLength, length - traveled);
                     Vector2f segStart = start + direction * traveled;
                     Vector2f segEnd = segStart + direction * segLength;
                     Vertex dash[] = {
                         Vertex(segStart, pathColor),
-                        Vertex(segEnd, pathColor)
-                    };
+                        Vertex(segEnd, pathColor)};
                     window.draw(dash, 2, Lines);
                     traveled += segLength + gapLength;
                 }
             }
-            if (length > 30.0f) {
+            if (length > 30.0f)
+            {
                 Vector2f arrowBase = end - direction * 15.0f;
                 Vector2f perpendicular(-direction.y, direction.x);
                 Vertex arrow[] = {
                     Vertex(end, pathColor),
                     Vertex(arrowBase + perpendicular * 6.0f, pathColor),
                     Vertex(end, pathColor),
-                    Vertex(arrowBase - perpendicular * 6.0f, pathColor)
-                };
+                    Vertex(arrowBase - perpendicular * 6.0f, pathColor)};
                 window.draw(arrow, 4, Lines);
             }
         }
     }
-    void drawPathInfo(RenderWindow& window) {
-        if (currentPath.size() < 2) return;
-        if (!showCostPath && !showTimePath) return;
-        for (int i = 0; i < currentPath.size() - 1; i++) {
+    void drawPathInfo(RenderWindow &window)
+    {
+        if (currentPath.size() < 2)
+            return;
+        if (!showCostPath && !showTimePath)
+            return;
+        for (int i = 0; i < currentPath.size() - 1; i++)
+        {
             int from = currentPath.get(i);
             Vector2f start = ports[from].position;
-            if (i > 0 && i < currentPath.size() - 1) {
+            if (i > 0 && i < currentPath.size() - 1)
+            {
                 CircleShape transferCircle(8.0f);
                 transferCircle.setPosition(start - Vector2f(8, 8));
                 transferCircle.setFillColor(Color::Transparent);
                 transferCircle.setOutlineColor(Color::Cyan);
                 transferCircle.setOutlineThickness(2.0f);
-                transferCircle.setPointCount(6); 
+                transferCircle.setPointCount(6);
                 window.draw(transferCircle);
                 Text transferText("↻", font, 14);
                 transferText.setFillColor(Color::Cyan);
@@ -1208,115 +1342,138 @@ class Ship // Ship class
                 window.draw(transferText);
             }
         }
-    }    
-    void drawPath(RenderWindow& window) {
-        if (currentPath.size() < 2) return;
-        if (!showCostPath && !showTimePath) return;
+    }
+    void drawPath(RenderWindow &window)
+    {
+        if (currentPath.size() < 2)
+            return;
+        if (!showCostPath && !showTimePath)
+            return;
         drawPathLine(window);
         drawPathInfo(window);
         drawPathDetailsPanel(window);
     }
-void drawPathDetailsPanel(RenderWindow& window) {
-    if (currentPath.size() < 2) return;
-    string itinerary = "ITINERARY:\n";
-    int legNumber = 1;
-    for (int i = 0; i < currentPath.size() - 1; i++) {
-        int from = currentPath.get(i);
-        int to = currentPath.get(i+1);
-        Voyage* v = ports[from].voyages;
-        string voyageDetails = "";
-        while (v) {
-            if (v->destinationPort == to) {
+    void drawPathDetailsPanel(RenderWindow &window)
+    {
+        if (currentPath.size() < 2)
+            return;
+        string itinerary = "ITINERARY:\n";
+        int legNumber = 1;
+        for (int i = 0; i < currentPath.size() - 1; i++)
+        {
+            int from = currentPath.get(i);
+            int to = currentPath.get(i + 1);
+            Voyage *v = ports[from].voyages;
+            string voyageDetails = "";
+            while (v)
+            {
+                if (v->destinationPort == to)
+                {
+                    char buf[128];
+                    sprintf(buf, "%d. %s → %s\n   %s | $%d | %dh%dm\n",
+                            legNumber++,
+                            ports[from].name.c_str(),
+                            ports[to].name.c_str(),
+                            v->company.c_str(),
+                            v->cost,
+                            v->getDurationMinutes() / 60,
+                            v->getDurationMinutes() % 60);
+                    voyageDetails = buf;
+                    break;
+                }
+                v = v->next;
+            }
+            if (voyageDetails.empty())
+            {
                 char buf[128];
-                sprintf(buf, "%d. %s → %s\n   %s | $%d | %dh%dm\n",
+                sprintf(buf, "%d. %s → %s\n   [TRANSFER REQUIRED]\n",
                         legNumber++,
                         ports[from].name.c_str(),
-                        ports[to].name.c_str(),
-                        v->company.c_str(),
-                        v->cost,
-                        v->getDurationMinutes() / 60,
-                        v->getDurationMinutes() % 60);
+                        ports[to].name.c_str());
                 voyageDetails = buf;
-                break;
             }
-            v = v->next;
-        }
-        if (voyageDetails.empty()) {
-            char buf[128];
-            sprintf(buf, "%d. %s → %s\n   [TRANSFER REQUIRED]\n",
-                    legNumber++,
-                    ports[from].name.c_str(),
-                    ports[to].name.c_str());
-            voyageDetails = buf;
-        }
-        itinerary += voyageDetails;
-        if (i < currentPath.size() - 2) {
-            itinerary += " Layover at port\n";
-        }
-    }
-    RectangleShape panel(Vector2f(400, min(300.0f, 50.0f + legNumber * 40.0f)));
-    panel.setFillColor(Color(0, 0, 0, 220));
-    panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
-    panel.setOutlineThickness(3);
-    panel.setPosition(390, 840);
-    window.draw(panel);
-    Text itineraryText(itinerary, font, 14);
-    itineraryText.setFillColor(Color::White);
-    itineraryText.setPosition(400, 880);
-    window.draw(itineraryText);
-    string pathType = showCostPath ? "CHEAPEST PATH" : "FASTEST PATH";
-    Text typeText(pathType, font, 18);
-    typeText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
-    typeText.setStyle(Text::Bold);
-    typeText.setPosition(480, 850);
-    window.draw(typeText);
-}
-void drawPathSummary(RenderWindow& window) {
-    if (currentPath.size() < 2) return;
-    int totalCost = 0;
-    int totalTime = 0;
-    int segments = currentPath.size() - 1;
-    for (int i = 0; i < segments; i++) {
-        int from = currentPath.get(i);
-        int to = currentPath.get(i+1);
-        Voyage* v = ports[from].voyages;
-        while (v) {
-            if (v->destinationPort == to) {
-                totalCost += v->cost;
-                totalTime += v->getDurationMinutes();
-                break;
+            itinerary += voyageDetails;
+            if (i < currentPath.size() - 2)
+            {
+                itinerary += " Layover at port\n";
             }
-            v = v->next;
         }
+        RectangleShape panel(Vector2f(400, min(300.0f, 50.0f + legNumber * 40.0f)));
+        panel.setFillColor(Color(0, 0, 0, 220));
+        panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
+        panel.setOutlineThickness(3);
+        panel.setPosition(390, 840);
+        window.draw(panel);
+        Text itineraryText(itinerary, font, 14);
+        itineraryText.setFillColor(Color::White);
+        itineraryText.setPosition(400, 880);
+        window.draw(itineraryText);
+        string pathType = showCostPath ? "CHEAPEST PATH" : "FASTEST PATH";
+        Text typeText(pathType, font, 18);
+        typeText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
+        typeText.setStyle(Text::Bold);
+        typeText.setPosition(480, 850);
+        window.draw(typeText);
     }
-    string summary;
-    if (showCostPath) {
-        summary = "CHEAPEST PATH FOUND:\n";
-    } else if (showTimePath) {
-        summary = "FASTEST PATH FOUND:\n";
-    } else {
-        summary = "CURRENT PATH:\n";
+    void drawPathSummary(RenderWindow &window)
+    {
+        if (currentPath.size() < 2)
+            return;
+        int totalCost = 0;
+        int totalTime = 0;
+        int segments = currentPath.size() - 1;
+        for (int i = 0; i < segments; i++)
+        {
+            int from = currentPath.get(i);
+            int to = currentPath.get(i + 1);
+            Voyage *v = ports[from].voyages;
+            while (v)
+            {
+                if (v->destinationPort == to)
+                {
+                    totalCost += v->cost;
+                    totalTime += v->getDurationMinutes();
+                    break;
+                }
+                v = v->next;
+            }
+        }
+        string summary;
+        if (showCostPath)
+        {
+            summary = "CHEAPEST PATH FOUND:\n";
+        }
+        else if (showTimePath)
+        {
+            summary = "FASTEST PATH FOUND:\n";
+        }
+        else
+        {
+            summary = "CURRENT PATH:\n";
+        }
+        summary += "Route: ";
+        for (int i = 0; i < min(currentPath.size(), 4); i++)
+        {
+            summary += ports[currentPath.get(i)].name.c_str();
+            if (i < min(currentPath.size(), 4) - 1)
+                summary += " → ";
+        }
+        if (currentPath.size() > 4)
+            summary += " → ...";
+        summary += "\nSegments: " + to_string(segments);
+        summary += "\nTotal Cost: $" + to_string(totalCost);
+        summary += "\nTotal Time: " + to_string(totalTime / 60) + "h " + to_string(totalTime % 60) + "m";
+        RectangleShape panel(Vector2f(400, 140));
+        panel.setFillColor(Color(0, 0, 0, 200));
+        panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
+        panel.setOutlineThickness(3);
+        panel.setPosition(1520, 20);
+        Text summaryText(summary, font, 16);
+        summaryText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
+        summaryText.setPosition(1530, 30);
+        window.draw(summaryText);
+        window.draw(panel);
     }
-    summary += "Route: ";
-    for (int i = 0; i < min(currentPath.size(), 4); i++) {
-        summary += ports[currentPath.get(i)].name.c_str();
-        if (i < min(currentPath.size(), 4) - 1) summary += " → ";
-    }
-    if (currentPath.size() > 4) summary += " → ...";
-    summary += "\nSegments: " + to_string(segments);
-    summary += "\nTotal Cost: $" + to_string(totalCost);
-    summary += "\nTotal Time: " + to_string(totalTime/60) + "h " + to_string(totalTime%60) + "m";
-    RectangleShape panel(Vector2f(400, 140));
-    panel.setFillColor(Color(0, 0, 0, 200));
-    panel.setOutlineColor(showCostPath ? Color::Yellow : Color::Green);
-    panel.setOutlineThickness(3);
-    panel.setPosition(1520, 20);
-    Text summaryText(summary, font, 16);
-    summaryText.setFillColor(showCostPath ? Color::Yellow : Color::Green);
-    summaryText.setPosition(1530, 30);
-    window.draw(summaryText);
-     window.draw(panel);
-}
     void drawUI(RenderWindow &window)
     {
         RectangleShape panel(Vector2f(360, 1080));
@@ -1547,6 +1704,7 @@ void drawPathSummary(RenderWindow& window) {
             window.draw(notifText);
         }
     }
+
 public:
     MaritimeSystem() : portCount(0), shipCount(0), startPort(-1), endPort(-1),
                        hoveredPort(-1), selectedRouteFrom(-1), selectedRouteTo(-1),
@@ -1571,7 +1729,7 @@ public:
             mapSprite.setTexture(mapTexture);
             mapSprite.setScale(1600.0f / mapTexture.getSize().x,
                                1100.0f / mapTexture.getSize().y);
-                               mapSprite.setPosition(360.f, 0.f);
+            mapSprite.setPosition(360.f, 0.f);
             std::cout << "Map loaded: " << mapTexture.getSize().x << "x"
                       << mapTexture.getSize().y << " → scaled to 2000x1100\n";
         }
@@ -1694,27 +1852,34 @@ public:
             findAllPaths();
             break;
         case Keyboard::C:
-    if (startPort != -1 && endPort != -1) {
-        if (useAStar) astar(true);
-        else dijkstra(true);
-        showCostPath = true;
-        showTimePath = false;
-        showAllPathsMode = false;
-        if (bookingAnim.active) {
-            bookingAnim.stop();
-            notification = MyString("Finding new path... animation stopped");
-            notificationTimer = 2.0f;
-        }
-        if (currentPath.size() > 2) {
-            notification = MyString("Multi-leg path found! Check itinerary panel.");
-            notificationTimer = 3.0f;
-        }
-    } else {
-        notification = MyString("Select START port (click), then END port");
-        notificationTimer = 2.5f;
-    }
-    notificationClock.restart();
-    break;
+            if (startPort != -1 && endPort != -1)
+            {
+                if (useAStar)
+                    astar(true);
+                else
+                    dijkstra(true);
+                showCostPath = true;
+                showTimePath = false;
+                showAllPathsMode = false;
+                if (bookingAnim.active)
+                {
+                    bookingAnim.stop();
+                    notification = MyString("Finding new path... animation stopped");
+                    notificationTimer = 2.0f;
+                }
+                if (currentPath.size() > 2)
+                {
+                    notification = MyString("Multi-leg path found! Check itinerary panel.");
+                    notificationTimer = 3.0f;
+                }
+            }
+            else
+            {
+                notification = MyString("Select START port (click), then END port");
+                notificationTimer = 2.5f;
+            }
+            notificationClock.restart();
+            break;
         case Keyboard::F:
             if (startPort != -1 && endPort != -1)
             {
@@ -2058,77 +2223,90 @@ public:
             }
         }
     }
-    void draw(RenderWindow& window) {
-    window.draw(mapSprite);
-    for (int i = 0; i < portCount; i++) {
-        Voyage* v = ports[i].voyages;
-        while (v) {
-            drawRouteLine(window, i, v->destinationPort, *v);
-            v = v->next;
+    void draw(RenderWindow &window)
+    {
+        window.draw(mapSprite);
+        for (int i = 0; i < portCount; i++)
+        {
+            Voyage *v = ports[i].voyages;
+            while (v)
+            {
+                drawRouteLine(window, i, v->destinationPort, *v);
+                v = v->next;
+            }
         }
-    }
-    if (!exploredEdges.empty()) {
-        float alpha = 100.0f + 100.0f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f);
-        Color exploreColor(100, 200, 255, static_cast<Uint8>(alpha));
-        for (int i = 0; i < exploredEdges.size(); i += 2) {
-            int from = exploredEdges.get(i);
-            int to = exploredEdges.get(i+1);
-            Vertex line[] = {
-                Vertex(ports[from].position, exploreColor),
-                Vertex(ports[to].position, exploreColor)
-            };
-            window.draw(line, 2, Lines);
-            CircleShape exploredDot(3.0f);
-            exploredDot.setFillColor(Color(100, 200, 255, 180));
-            exploredDot.setPosition(ports[from].position - Vector2f(3, 3));
-            window.draw(exploredDot);
-            exploredDot.setPosition(ports[to].position - Vector2f(3, 3));
-            window.draw(exploredDot);
+        if (!exploredEdges.empty())
+        {
+            float alpha = 100.0f + 100.0f * sin(animationClock.getElapsedTime().asSeconds() * 2.0f);
+            Color exploreColor(100, 200, 255, static_cast<Uint8>(alpha));
+            for (int i = 0; i < exploredEdges.size(); i += 2)
+            {
+                int from = exploredEdges.get(i);
+                int to = exploredEdges.get(i + 1);
+                Vertex line[] = {
+                    Vertex(ports[from].position, exploreColor),
+                    Vertex(ports[to].position, exploreColor)};
+                window.draw(line, 2, Lines);
+                CircleShape exploredDot(3.0f);
+                exploredDot.setFillColor(Color(100, 200, 255, 180));
+                exploredDot.setPosition(ports[from].position - Vector2f(3, 3));
+                window.draw(exploredDot);
+                exploredDot.setPosition(ports[to].position - Vector2f(3, 3));
+                window.draw(exploredDot);
+            }
         }
-    }
-    drawPathLine(window);
-    drawAllFoundPaths(window);
-    for (int i = 0; i < portCount; i++) {
-        drawPortGeometry(window, i);
-    }
-    if (bookingAnim.active) {
-        drawBookingAnimation(window);
-    }
-    for (int i = 0; i < portCount; i++) {
-        Voyage* v = ports[i].voyages;
-        while (v) {
-            drawRouteInfo(window, i, v->destinationPort, *v);
-            v = v->next;
+        drawPathLine(window);
+        drawAllFoundPaths(window);
+        for (int i = 0; i < portCount; i++)
+        {
+            drawPortGeometry(window, i);
         }
+        if (bookingAnim.active)
+        {
+            drawBookingAnimation(window);
+        }
+        for (int i = 0; i < portCount; i++)
+        {
+            Voyage *v = ports[i].voyages;
+            while (v)
+            {
+                drawRouteInfo(window, i, v->destinationPort, *v);
+                v = v->next;
+            }
+        }
+        drawPathInfo(window);
+        drawPathDetailsPanel(window);
+        for (int i = 0; i < portCount; i++)
+        {
+            drawPortInfo(window, i);
+        }
+        if (bookingAnim.active)
+        {
+            drawBookingInfo(window);
+        }
+        drawUI(window);
     }
-    drawPathInfo(window);
-    drawPathDetailsPanel(window);
-    for (int i = 0; i < portCount; i++) {
-        drawPortInfo(window, i);
-    }
-    if (bookingAnim.active) {
-        drawBookingInfo(window);
-    }
-    drawUI(window);
-}
-    void drawAllFoundPaths(RenderWindow& window) {
-        if (!showAllPathsMode || allParetoPaths.empty()) return;
+    void drawAllFoundPaths(RenderWindow &window)
+    {
+        if (!showAllPathsMode || allParetoPaths.empty())
+            return;
         Color colors[] = {
             Color::Cyan,
             Color::Magenta,
             Color::Yellow,
             Color::Green,
-            Color::White
-        };
+            Color::White};
         float pulse = 0.5f + 0.5f * sin(animationClock.getElapsedTime().asSeconds() * 3.0f);
-        for(int p = 0; p < allParetoPaths.size(); p++) {
-            LinkedList<int>* path = allParetoPaths.get(p);
+        for (int p = 0; p < allParetoPaths.size(); p++)
+        {
+            LinkedList<int> *path = allParetoPaths.get(p);
             Color pathColor = colors[p % 5];
             pathColor.a = static_cast<Uint8>(150 + 100 * pulse);
             Vector2f offset(p * 2.0f - 4.0f, p * 2.0f - 4.0f);
-            for(int i = 0; i < path->size() - 1; i++) {
+            for (int i = 0; i < path->size() - 1; i++)
+            {
                 int from = path->get(i);
-                int to = path->get(i+1);
+                int to = path->get(i + 1);
                 Vector2f start = ports[from].position + offset;
                 Vector2f end = ports[to].position + offset;
                 Vector2f direction = end - start;
@@ -2140,17 +2318,16 @@ public:
                     Vertex(start - normal * thickness, pathColor),
                     Vertex(start + normal * thickness, pathColor),
                     Vertex(end + normal * thickness, pathColor),
-                    Vertex(end - normal * thickness, pathColor)
-                };
+                    Vertex(end - normal * thickness, pathColor)};
                 window.draw(line, 4, Quads);
-                if (length > 30.0f) {
+                if (length > 30.0f)
+                {
                     Vector2f arrowBase = end - direction * 15.0f;
                     Vertex arrow[] = {
                         Vertex(end, pathColor),
                         Vertex(arrowBase + normal * 6.0f, pathColor),
                         Vertex(end, pathColor),
-                        Vertex(arrowBase - normal * 6.0f, pathColor)
-                    };
+                        Vertex(arrowBase - normal * 6.0f, pathColor)};
                     window.draw(arrow, 4, Lines);
                 }
             }
@@ -2166,7 +2343,8 @@ public:
         title.setStyle(Text::Bold);
         title.setPosition(1510, 510);
         window.draw(title);
-        for(int p = 0; p < allParetoPaths.size(); p++) {
+        for (int p = 0; p < allParetoPaths.size(); p++)
+        {
             Color c = colors[p % 5];
             RectangleShape box(Vector2f(15, 15));
             box.setFillColor(c);
@@ -2431,78 +2609,94 @@ inline void MaritimeSystem::drawBookingInfo(RenderWindow &window)
     statsText.setPosition(415, 780);
     window.draw(statsText);
 }
-    void MaritimeSystem::runTests()
+void MaritimeSystem::runTests()
+{
+    cout << "\n==================== RUNNING SYSTEM TESTS ====================\n";
+    cout << "[TEST] MyString... ";
+    MyString s1("Hello");
+    MyString s2;
+    if (strcmp(s1.c_str(), "Hello") == 0 && strcmp(s2.c_str(), "") == 0)
+        cout << "PASS\n";
+    else
+        cout << "FAIL\n";
+    cout << "[TEST] DateTime Logic... ";
+    DateTime dt1(1, 1, 2024, 10, 0);
+    DateTime dt2(2, 1, 2024, 10, 0);
+    int diff = dt1.minutesDifference(dt2);
+    if (diff == 1440)
+        cout << "PASS (Difference: " << diff << "m)\n";
+    else
+        cout << "FAIL (Expected 1440, got " << diff << ")\n";
+    cout << "[TEST] Data Loading... ";
+    if (portCount > 0 && findPort("Karachi") != -1 && findPort("Singapore") != -1)
+        cout << "PASS (Loaded " << portCount << " ports)\n";
+    else
+        cout << "FAIL (Ports not loaded correctly)\n";
+    cout << "[TEST] Pathfinding (Karachi -> Singapore)... ";
+    startPort = findPort("Karachi");
+    endPort = findPort("Singapore");
+    if (startPort != -1 && endPort != -1)
     {
-        cout << "\n==================== RUNNING SYSTEM TESTS ====================\n";
-        cout << "[TEST] MyString... ";
-        MyString s1("Hello");
-        MyString s2;
-        if (strcmp(s1.c_str(), "Hello") == 0 && strcmp(s2.c_str(), "") == 0)
-            cout << "PASS\n";
-        else
-            cout << "FAIL\n";
-        cout << "[TEST] DateTime Logic... ";
-        DateTime dt1(1, 1, 2024, 10, 0);
-        DateTime dt2(2, 1, 2024, 10, 0);
-        int diff = dt1.minutesDifference(dt2);
-        if (diff == 1440) 
-            cout << "PASS (Difference: " << diff << "m)\n";
-        else 
-            cout << "FAIL (Expected 1440, got " << diff << ")\n";
-        cout << "[TEST] Data Loading... ";
-        if (portCount > 0 && findPort("Karachi") != -1 && findPort("Singapore") != -1)
-            cout << "PASS (Loaded " << portCount << " ports)\n";
-        else
-            cout << "FAIL (Ports not loaded correctly)\n";
-        cout << "[TEST] Pathfinding (Karachi -> Singapore)... ";
-        startPort = findPort("Karachi");
-        endPort = findPort("Singapore");
-        if (startPort != -1 && endPort != -1) {
-            dijkstra(true);
-            if (currentPath.size() > 0) {
-                cout << "PASS (Found path with " << currentPath.size() << " nodes)\n";
-                cout << "       Path: ";
-                for(int i=0; i<currentPath.size(); i++) {
-                    cout << ports[currentPath.get(i)].name.c_str();
-                    if(i < currentPath.size()-1) cout << " -> ";
-                }
-                cout << "\n";
-            } else {
-                cout << "FAIL (No path found)\n";
-            }
-        } else {
-            cout << "FAIL (Ports not found)\n";
-        }
-        cout << "[TEST] Max Layover Logic... ";
-        currentPath.clear();
-        maxLayoverDays = 14; 
         dijkstra(true);
         if (currentPath.size() > 0)
-             cout << "PASS (Path found with 14 day limit)\n";
-        else
-             cout << "FAIL (No path with 14 day limit)\n";
-        cout << "[TEST] Separate Ship Storage... ";
-        int testPortIdx = findPort("Dubai");
-        if (testPortIdx != -1) {
-            ports[testPortIdx].addShip(101, MyString("MaerskLine"));
-            ports[testPortIdx].addShip(102, MyString("MSC"));
-            bool maerskFound = false;
-            bool mscFound = false;
-            for(int i=0; i<ports[testPortIdx].companyQueues.size(); i++) {
-                if(ports[testPortIdx].companyQueues.get(i).companyName == "MaerskLine") {
-                    if(!ports[testPortIdx].companyQueues.get(i).shipIds.empty()) maerskFound = true;
-                }
-                if(ports[testPortIdx].companyQueues.get(i).companyName == "MSC") {
-                    if(!ports[testPortIdx].companyQueues.get(i).shipIds.empty()) mscFound = true;
-                }
+        {
+            cout << "PASS (Found path with " << currentPath.size() << " nodes)\n";
+            cout << "       Path: ";
+            for (int i = 0; i < currentPath.size(); i++)
+            {
+                cout << ports[currentPath.get(i)].name.c_str();
+                if (i < currentPath.size() - 1)
+                    cout << " -> ";
             }
-            if(maerskFound && mscFound)
-                cout << "PASS (Ships stored in separate queues)\n";
-            else
-                cout << "FAIL (Ships not found in separate queues)\n";
-        } else {
-            cout << "FAIL (Port not found)\n";
+            cout << "\n";
         }
-        cout << "==================== TESTS COMPLETED ====================\n\n";
+        else
+        {
+            cout << "FAIL (No path found)\n";
+        }
     }
+    else
+    {
+        cout << "FAIL (Ports not found)\n";
+    }
+    cout << "[TEST] Max Layover Logic... ";
+    currentPath.clear();
+    maxLayoverDays = 14;
+    dijkstra(true);
+    if (currentPath.size() > 0)
+        cout << "PASS (Path found with 14 day limit)\n";
+    else
+        cout << "FAIL (No path with 14 day limit)\n";
+    cout << "[TEST] Separate Ship Storage... ";
+    int testPortIdx = findPort("Dubai");
+    if (testPortIdx != -1)
+    {
+        ports[testPortIdx].addShip(101, MyString("MaerskLine"));
+        ports[testPortIdx].addShip(102, MyString("MSC"));
+        bool maerskFound = false;
+        bool mscFound = false;
+        for (int i = 0; i < ports[testPortIdx].companyQueues.size(); i++)
+        {
+            if (ports[testPortIdx].companyQueues.get(i).companyName == "MaerskLine")
+            {
+                if (!ports[testPortIdx].companyQueues.get(i).shipIds.empty())
+                    maerskFound = true;
+            }
+            if (ports[testPortIdx].companyQueues.get(i).companyName == "MSC")
+            {
+                if (!ports[testPortIdx].companyQueues.get(i).shipIds.empty())
+                    mscFound = true;
+            }
+        }
+        if (maerskFound && mscFound)
+            cout << "PASS (Ships stored in separate queues)\n";
+        else
+            cout << "FAIL (Ships not found in separate queues)\n";
+    }
+    else
+    {
+        cout << "FAIL (Port not found)\n";
+    }
+    cout << "==================== TESTS COMPLETED ====================\n\n";
+}
 #endif

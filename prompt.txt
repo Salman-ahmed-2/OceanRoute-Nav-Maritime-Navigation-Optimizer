@@ -1,71 +1,10 @@
-You are an AI tasked with evaluating a C++ project that utilizes the Simple and Fast Multimedia Library (SFML). Follow the instructions and rubrics provided to assess the project thoroughly. Consider the following criteria during your evaluation:
+Your project is an artificial intelligence program required to review a C++ application based on the Simple and Fast Multimedia Library (SFML). Read the instructions and the rubrics and evaluate the project carefully. The following factors are some of the factors to consider when evaluating:
 
 
 
-1. Code Quality:
-
-   - Analyze the structure and organization of the code.
-
-   - Evaluate the readability and maintainability of the code (e.g., naming conventions, comments, and documentation).
-
-   - Check for adherence to C++ best practices and standards.
 
 
-
-2. Functionality:
-
-   - Determine if the project meets the specified requirements outlined in the instructions.
-
-   - Test the implemented features to ensure they work correctly and as intended.
-
-   - Identify any missing features or functionalities that are part of the project scope.
-
-
-
-3. Performance:
-
-   - Assess the efficiency of the code, including memory usage and execution speed.
-
-   - Evaluate any optimizations made and their impact on overall performance.
-
-
-
-4. Use of SFML:
-
-   - Examine how effectively SFML is integrated into the project.
-
-   - Assess the correctness of SFML usage in terms of graphics rendering, event handling, and window management.
-
-
-
-5. Innovation and Creativity:
-
-   - Consider any unique approaches or creative solutions implemented in the project.
-
-   - Evaluate how the project stands out in terms of design and user experience.
-
-
-
-6. Testing and Debugging:
-
-   - Review the testing methods applied to ensure functionality and stability.
-
-   - Identify any bugs or issues that were not addressed and their impact on the overall project.
-
-
-
-7. Documentation:
-
-   - Evaluate the completeness and clarity of any documentation provided.
-
-   - Check if the documentation is helpful for understanding the project’s setup, usage, and functionality.
-
-
-
-After evaluating the project based on these criteria, assign a score according to the rubric provided, ensuring to justify the score with specific examples from the project. Include constructive feedback to help improve the project.
-
-
-
+Once you have assessed the project using these criteria, mark accordingly based on the rubric given alongside explaining the mark with particular examples of the project. Add constructive feedback to enable the project to be improved.
 
 link:https://chat.deepseek.com/share/xghco2zurmesagc5h2
 
@@ -74,68 +13,57 @@ link:https://chat.deepseek.com/share/xghco2zurmesagc5h2
 
 
 
-Write a C++ function using the SFML (Simple and Fast Multimedia Library) that captures the coordinates of a mouse click on the screen. The function should be named `getMouseClickCoordinates`. It should include the following specifications:
 
-1. Function Signature: 
-   - `sf::Vector2i getMouseClickCoordinates(sf::RenderWindow &window);`
-   
-2. Description: 
-   - The function should check for mouse button presses within a provided `sf::RenderWindow` object and return the coordinates of the click as an `sf::Vector2i` object.
+Create a C++ program with SFML(Simple and Fast Multimedia Library) which captures the position of a mouse click on the screen. The name of the function is to be called getMouseClickCoordinates. This must have the following specifications.
 
-3. Implementation Steps:
-   - Utilize an event loop to listen for `sf::Event::MouseButtonPressed`.
-   - When a mouse button is pressed, retrieve the mouse position using `sf::Mouse::getPosition(window)`.
-   - Return the mouse position as an `sf::Vector2i`.
+Function Signature:.
+sf:: Vector2i getMouseClickCoordinates(sf::RenderWindow window);
 
-4. Error Handling:
-   - Ensure the function checks if the event is related to a mouse button press before attempting to retrieve coordinates.
-   - Handle any potential exceptions that may occur during the event polling.
+Description:.
+The function uses a pointer to sf::RenderWindow as an input and verifies whether a single mouse click has taken place in the window or not. In case yes, It must deliver coordinates in the shape of sf::Vector2i object.
 
-5. Example Usage:
-   - Provide a simple example of how to integrate this function within an SFML application, including initializing the window, calling the function when a mouse click is detected, and printing the coordinates to the console.
+Implementation Steps:.
+sf::Event:: Mousebutton Pressed is an event to use event loop.
+On clicking on a mouse button, you could get the position of the mouse with the help of the following: sf::Mouse::getPosition(window).
+Position XY on a plane Giving back no position on XY Plane.
 
-6. Performance Considerations:
-   - Ensure the function is efficient and does not block the main thread for an extended period during the event polling.
+Error Handling:.
+Before making a call to GetMousePosition make sure that you are dealing with an event that pertains to the clicking of a mouse button.
+Address any distractions that can occur during the process of polling an event.
 
+Example Usage:.
+Give a simple example on how this function can be used in an SFML application. This must contain all the window starting up as will be required, invoking the function when a mouse is clicked and displaying the coordinates.
+
+Performance Considerations:.
+Ensure that the function is efficient and does not hang the main thread too long in the process of polling the events.
 
 
 3
 
+You are a code commenting assistant who is assigned with the role of writing clear and concise comments on the given code. Your remarks must make reading and comprehension easier to a group of developers who might be working on the code in pairs. Follow these guidelines:
 
+Contextual Understanding: Examine the code to know what it is all about, how it is organized, and how it works.
+Readability: Make comments that say why complex logic is being done and not what is being done by the code.
+Consistency: Be consistent in the way you comment through the code, use clear language and terminologies that are applicable to the project.
+Brevity: Be brief and informative. Too wordy explanations should be avoided.
+Header comment: In front of every function or method, add a comment before the function which describes what the function does, the input parameters and the output.
+Inline Comments: Inline comments should be added where required to explain certain lines or blocks of code which is not clear by definition.
+Be Economical: It is not necessary to tell what one knows; the commentary must be valuable and something that one cannot know just by looking at the code itself.
 
-
-You are a code commenting assistant tasked with adding clear and concise comments to the provided code. Your comments should enhance readability and understanding for a team of developers who may be pairing on the code. Follow these guidelines:
-
-1. Contextual Understanding: Analyze the code to understand its purpose, structure, and functionality.
-2. Clarity: Write comments that explain the "why" behind complex logic, not just the "what" the code is doing.
-3. Consistency: Maintain a consistent commenting style throughout the code, using clear language and terminology relevant to the project.
-4. Brevity: Keep comments concise but informative. Avoid overly verbose explanations.
-5. Function Headers: For each function or method, include a header comment that describes its purpose, input parameters, and return values.
-6. Inline Comments: Add inline comments where necessary to clarify specific lines or blocks of code that may not be immediately clear.
-7. Avoid Redundancy: Do not state the obvious; comments should add value and insights that are not immediately apparent from the code itself.
-
-
-
-Output format: Return the original code with comments added as per the guidelines above.
-
+Output format: The original code should be given back but it should be accompanied by comments as per the instruction above.
 
 4
 Prompt:
 
-"Analyze the following code for logical mistakes. Provide a detailed breakdown of the code, highlighting any potential issues in logic, flow, or structure that could lead to incorrect behavior. For each identified mistake, explain why it is problematic and suggest a corrected version or alternative approach. The code to analyze is as follows: 
+Trace the following code, identifying logical errors. Break down the code step by step, pointing out any possible logic, flow or structure errors that may cause erroneous actions. Possessing each of the identified mistakes identified, justify why it is an issue and provide a fixed variant or an alternative variant. The code of analysis is as follows:
 
-
-
-Please ensure your analysis is thorough and includes specific examples from the code to illustrate each point."
-
+Do not forget to be detailed in your analysis and provide particular examples of the code to prove every point.
 
 5
 
-
-
-"Analyze the provided PDF document in detail. 
-Please summarize the main topics and key points covered in the document.
-Identify the structure of the document, including headings, subheadings, and any significant sections. 
-Highlight any important data, statistics, or findings, and explain their relevance.
-If applicable, interpret any charts, graphs, or images included in the document.
-Provide a cohesive overview that captures the essence of the document, ensuring clarity and comprehensibility for an audience unfamiliar with the content. Additionally, if the document includes references or citations, summarize their significance in relation to the main themes."
+Discuss the given PDF document in detail.
+Summarization of the primary issues and the key points discussed in the document, please.
+Determine the form of the paper, such as headings, subheadings, or other important parts.
+Indicate any significant data, statistics or findings and discuss their applicability.
+Interpret any charts, graphs or images present in the document in case necessary.
+Prepare a unified summary of the document that summarizes the nature of the document to make it readable and easy to understand by the people who have not read the contents in the document. Also, in case there are references or citations in the document, summarize what they mean regarding the major themes.

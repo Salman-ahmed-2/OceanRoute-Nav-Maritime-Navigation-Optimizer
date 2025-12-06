@@ -10,11 +10,9 @@ public:
     {
         None,
         StartNavigation,
-       
-        
+
         Exit,
-        
-        
+
     };
 
     RenderWindow &m_window;
@@ -37,7 +35,7 @@ public:
     {
 
         m_labels[0] = "Start Navigation";
-       
+
         m_labels[1] = "Exit";
         m_item_count = 2;
 
@@ -128,7 +126,6 @@ public:
     }
     void update()
     {
-       
     }
 
     void draw()
@@ -165,9 +162,9 @@ public:
         switch (m_selected_index)
         {
         case 0:
-        
+
             return Result::StartNavigation;
-       
+
         case 3:
             return Result::Exit;
             ;

@@ -16,8 +16,7 @@ int main() // Entry point
     cout << "║        Intelligent Route Planning & Visualization System        ║\n";
     cout << "╚══════════════════════════════════════════════════════════════════╝\n\n";
 
-    
-    Font font;
+        Font font;
     if (!font.loadFromFile("font/Neon 2 News.ttf"))
     {
         cerr << "Warning: Could not load font 'Neon 2 News.ttf'. Using default.\n";
